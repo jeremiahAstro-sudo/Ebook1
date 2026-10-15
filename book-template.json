@@ -1,0 +1,21 @@
+{
+  "slug": "replace-with-a-short-book-id",
+  "title": "Book title",
+  "subtitle": "Short subtitle",
+  "author": "Author name",
+  "category": "Category",
+  "description": "A short description for the catalog.",
+  "cover": {
+    "background": "linear-gradient(150deg, #d8e0bd 0%, #adc3a2 52%, #79947d 100%)",
+    "ink": "#274b3b",
+    "eyebrow": "A SMALL GUIDE TO",
+    "motif": "A phrase for the cover"
+  },
+  "readingMinutes": 20,
+  "inactiveMinutes": 30,
+  "accessTokens": [
+    "FIRST-TOKEN",
+    "SECOND-TOKEN"
+  ],
+  "chapters": []
+}
