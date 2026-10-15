@@ -1,6 +1,6 @@
 # Garden Reading Room
 
-This is a static site. GitHub Actions builds and deploys it to GitHub Pages whenever `main` changes. The build creates a small static index of the book files in `catalog/`; the published site does not need a server or API.
+This is a static site. GitHub Actions builds and deploys it to GitHub Pages whenever `main` changes. A small static index of the book files in `catalog/` is generated during the build; the published site does not need a server or API.
 
 ## Add a book
 
@@ -10,7 +10,7 @@ Each book lives in its own JSON file in [`catalog/`](./catalog/), named to match
 
 ## GitHub Pages setup
 
-In the repository settings, open **Pages** and set the build and deployment source to **GitHub Actions**. Push this workflow to the `main` branch. From then on, adding and committing one JSON file under `catalog/` triggers its build and deployment. The generated index is part of the deployed static site and is not a file you need to edit or upload. No public API, token, or server is needed.
+In the repository settings, open **Pages** and set the build and deployment source to **GitHub Actions**. Push this workflow to the `main` branch. From then on, adding and committing one JSON file under `catalog/` triggers its build and deployment. The generated index is part of the deployed static site and is not a file you need to edit or upload. If GitHub's built-in Pages/Jekyll workflow is selected, the root `catalog-index.html` template generates the same index at `/catalog-index.json`. No public API, token, or server is needed.
 
 For a local preview, run `node scripts/build-site.mjs` and serve the generated `_site/` folder over HTTP. Older `books.json` files and per-book files under `books/` are not used by the current site.
 
