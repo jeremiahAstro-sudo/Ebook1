@@ -6,6 +6,14 @@
   let adminImportedFile = null;
   let adminImportedChapters = null;
   let adminBookExport = null;
+  let adminCoverImage = "";
+  let coverImageLoadId = 0;
+  let removedBookSlugs = [];
+  let adminStatus = "";
+  let highlightMode = false;
+  const ADMIN_PASSWORD_SALT = "2d467fd52422102e4358c7a85d28b7f5";
+  const ADMIN_PASSWORD_HASH = "f00956aa31840a1bee406403e51f2aa3d6e64eac4b6b6d1928fce84805528d6d";
+  const ADMIN_PASSWORD_ITERATIONS = 210000;
   const ICONS = {
     leaf: '<path d="M20.8 3.2C12.5 3.8 5.8 8 5.8 15.1c0 3.3 2 5.1 4.8 5.1 6.1 0 10.1-8.7 10.2-17Z"/><path d="M3.6 22.4c3.5-6 7.9-9.8 13.2-12.5"/>',
     arrowRight: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
@@ -55,6 +63,45 @@
     return String(value == null ? "" : value).replace(/[&<>"']/g, function (char) {
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char];
     });
+  }
+
+  async function verifyAdminPassword(candidate) {
+    const key = await window.crypto.subtle.importKey(
+      "raw",
+      new TextEncoder().encode(candidate),
+      "PBKDF2",
+      false,
+      ["deriveBits"]
+    );
+    const bits = await window.crypto.subtle.deriveBits({
+      name: "PBKDF2",
+      salt: hexToBytes(ADMIN_PASSWORD_SALT),
+      iterations: ADMIN_PASSWORD_ITERATIONS,
+      hash: "SHA-256"
+    }, key, 256);
+    const actual = new Uint8Array(bits);
+    const expected = hexToBytes(ADMIN_PASSWORD_HASH);
+    let difference = actual.length ^ expected.length;
+    for (let index = 0; index < Math.min(actual.length, expected.length); index++) {
+      difference |= actual[index] ^ expected[index];
+    }
+    return difference === 0;
+  }
+
+  function hexToBytes(value) {
+    const bytes = new Uint8Array(value.length / 2);
+    for (let index = 0; index < bytes.length; index++) {
+      bytes[index] = parseInt(value.slice(index * 2, index * 2 + 2), 16);
+    }
+    return bytes;
+  }
+
+  function adminUnlocked() {
+    try {
+      return sessionStorage.getItem("eden-admin-unlocked") === "true";
+    } catch (error) {
+      return false;
+    }
   }
 
   function route() {
@@ -169,6 +216,12 @@
       index.books.some(function (name) { return typeof name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*\.json$/.test(name); })) {
       throw new Error("catalog-index.json must contain a books array of book filenames.");
     }
+    const savedHiddenBooks = store.read("hidden-books", []);
+    if (!Array.isArray(savedHiddenBooks) ||
+      savedHiddenBooks.some(function (slug) { return typeof slug !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug); })) {
+      throw new Error("The saved hidden book list is invalid. Clear this site's local storage and try again.");
+    }
+    removedBookSlugs = savedHiddenBooks.slice();
     books = await Promise.all(index.books.map(async function (name) {
       const response = await fetch("./catalog/" + encodeURIComponent(name));
       if (!response.ok) throw new Error("Could not load catalog/" + name + ".");
@@ -230,7 +283,7 @@
   function brand(compact) {
     return '<a href="#/" class="brand-link ' + (compact ? "brand-compact" : "") +
       '" data-action="home"><span class="brand-mark">' + icon("leaf", 18) +
-      '</span><span class="brand-name">Garden <em>Reading Room</em></span></a>';
+      '</span><span class="brand-name">Eden <em>Publications</em></span></a>';
   }
 
   function header() {
@@ -253,14 +306,19 @@
 
   function cover(book, size) {
     const coverData = book.cover || {};
+    const coverImage = typeof coverData.image === "string" &&
+      /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(coverData.image)
+      ? ';background-image:linear-gradient(0deg,rgb(0 0 0 / 38%),transparent 68%),url(&quot;' +
+        escapeHtml(coverData.image) + '&quot;);background-size:cover;background-position:center'
+      : "";
     return '<div class="cover-art cover-' + (size || "card") + '" style="background:' +
       escapeHtml(coverData.background || "linear-gradient(150deg,#d8e0bd,#79947d)") +
-      ';color:' + escapeHtml(coverData.ink || "#274b3b") + '">' +
+      ';color:' + escapeHtml(coverData.ink || "#274b3b") + coverImage + '">' +
       '<div class="cover-sprig" aria-hidden="true"><span></span><span></span><span></span></div>' +
       '<span class="cover-eyebrow">' + escapeHtml(coverData.eyebrow || "A SMALL GUIDE TO") + '</span>' +
       '<div class="cover-title serif">' + escapeHtml(coverData.motif || book.title) + '</div>' +
       '<div class="cover-rule"></div><span class="cover-author">' + escapeHtml(book.author) + '</span>' +
-      '<span class="cover-edition">GARDEN READING ROOM · ' + escapeHtml(book.category.toUpperCase()) + "</span></div>";
+      '<span class="cover-edition">EDEN PUBLICATIONS · ' + escapeHtml(book.category.toUpperCase()) + "</span></div>";
   }
 
   function bookCard(book) {
@@ -280,7 +338,8 @@
   }
 
   function categoryButtons() {
-    const categories = ["All"].concat(Array.from(new Set(books.map(function (book) { return book.category; }))));
+    const publicBooks = books.filter(function (book) { return !removedBookSlugs.includes(book.slug); });
+    const categories = ["All"].concat(Array.from(new Set(publicBooks.map(function (book) { return book.category; }))));
     return categories.map(function (category) {
       return '<button type="button" class="category-tab ' + (state.category === category ? "selected" : "") +
         '" data-action="category" data-category="' + escapeHtml(category) + '" aria-pressed="' +
@@ -290,7 +349,8 @@
 
   function catalogResults() {
     const query = state.query.trim().toLowerCase();
-    const filtered = books.filter(function (book) {
+    const publicBooks = books.filter(function (book) { return !removedBookSlugs.includes(book.slug); });
+    const filtered = publicBooks.filter(function (book) {
       const matchesCategory = state.category === "All" || book.category === state.category;
       const searchText = [book.title, book.subtitle, book.category, book.author].join(" ").toLowerCase();
       return matchesCategory && searchText.includes(query);
@@ -301,7 +361,7 @@
         '</div><h3 class="serif">Nothing on this shelf yet.</h3><p>Try another phrase or choose a different shelf.</p>' +
         '<button class="text-link" type="button" data-action="clear-search">Clear your search ' +
         icon("arrowRight", 14) + "</button></div>";
-    const savedBooks = books.filter(function (book) { return store.read("saved-books", []).includes(book.slug); });
+    const savedBooks = publicBooks.filter(function (book) { return store.read("saved-books", []).includes(book.slug); });
     if (savedBooks.length) {
       html += '<div class="saved-row"><div><div class="eyebrow muted-eyebrow">KEPT CLOSE</div>' +
         '<h3 class="serif">Your saved shelf</h3></div><div class="saved-list">' +
@@ -315,7 +375,8 @@
   }
 
   function catalog() {
-    const demo = books.some(function (book) { return book.isDemo; });
+    const publicBooks = books.filter(function (book) { return !removedBookSlugs.includes(book.slug); });
+    const demo = publicBooks.some(function (book) { return book.isDemo; });
     return '<div class="page-enter">' + header() + '<main><section class="hero-wrap">' +
       '<div class="hero-content"><div class="eyebrow"><span class="tiny-leaf">' + icon("leaf", 13) +
       "</span> A PERSONAL LIBRARY FOR EVERYDAY WELLBEING</div><h1 class=\"serif\">A softer place<br><i>to land.</i></h1>" +
@@ -329,8 +390,8 @@
       '<div class="hero-leaf leaf-c"><span></span><span></span></div><div class="floating-label label-bottom">OPEN A PAGE · TAKE A BREATH</div></div></section>' +
       '<section class="shelf-section" id="books"><div class="shelf-heading"><div><div class="eyebrow muted-eyebrow">THE SHELVES</div>' +
       '<h2 class="serif">Stories to <i>settle into.</i></h2><p>Short, useful reads for making a little room for yourself.</p></div>' +
-      '<span class="shelf-count"><strong id="book-count">' + String(books.length).padStart(2, "0") + '</strong> small book' +
-      (books.length === 1 ? "" : "s") + '<br>and growing slowly</span></div><div class="library-controls">' +
+      '<span class="shelf-count"><strong id="book-count">' + String(publicBooks.length).padStart(2, "0") + '</strong> small book' +
+      (publicBooks.length === 1 ? "" : "s") + '<br>and growing slowly</span></div><div class="library-controls">' +
       '<div class="category-tabs" id="category-tabs" role="group" aria-label="Filter books by category">' + categoryButtons() +
       '</div><label class="search-field">' + icon("search", 16) +
       '<input type="search" id="book-search" placeholder="Find a title…" aria-label="Search books"></label></div>' +
@@ -342,13 +403,36 @@
       '</main>' + footer() + "</div>";
   }
 
+  function adminLoginPage() {
+    return '<div class="page-enter">' + header() + '<main class="admin-main admin-login-main">' +
+      '<div class="admin-panel admin-login-panel"><div class="eyebrow muted-eyebrow">RESTRICTED WORKSPACE</div>' +
+      '<h1 class="serif admin-title">Admin <i>sign in.</i></h1>' +
+      '<p class="admin-intro">Enter the administrator password to open the publishing workspace.</p>' +
+      '<form class="admin-unlock-form"><label for="admin-password">Admin password</label>' +
+      '<input id="admin-password" name="password" type="password" autocomplete="current-password" required>' +
+      '<button class="button-primary" type="submit">Unlock admin ' + icon("arrowRight", 16) + '</button>' +
+      '<p class="form-message" id="admin-unlock-message" role="status" aria-live="polite"></p></form></div>' +
+      '</main>' + footer() + '</div>';
+  }
+
+  function adminPublishedBookCard(book) {
+    const hidden = removedBookSlugs.includes(book.slug);
+    return '<div class="admin-published-card ' + (hidden ? "book-hidden-from-library" : "") + '">' + bookCard(book) +
+      (hidden ? '<p class="admin-hidden-label">Hidden from the public library on this browser.</p>' : "") +
+      '<button class="' + (hidden ? "button-secondary" : "button-danger") + '" type="button" data-action="' +
+      (hidden ? "restore-book" : "delete-book") + '" data-book="' + escapeHtml(book.slug) + '">' +
+      (hidden ? "Show in library" : "Delete book") + '</button></div>';
+  }
+
   function adminPage() {
+    if (!adminUnlocked()) return adminLoginPage();
     return '<div class="page-enter">' + header() + '<main class="admin-main">' +
       '<a href="#/" class="back-link">' + icon("arrowLeft", 15) + "Back to the library</a>" +
       '<div class="eyebrow muted-eyebrow">STATIC PUBLISHING WORKSPACE</div>' +
       '<h1 class="serif admin-title">Prepare a <i>new book.</i></h1>' +
       '<p class="admin-intro">Import a Word document, add its catalog details, and download one book file to add to your library.</p>' +
-      '<aside class="admin-notice"><strong>Add books without replacing the catalog.</strong> Download the book JSON, upload that file into the repository’s <code>catalog/</code> folder, then commit and push it. The site discovers each JSON file in that folder and adds its book to the library. This browser-only workspace is not password protected. Published books and access tokens are visible in the static site files.</aside>' +
+      '<aside class="admin-notice"><strong>Static-site limitation:</strong> this password gate is a browser-only deterrent, not secure authentication. Hiding a book only changes the public library in this browser; it remains accessible to other visitors and by direct link.</aside>' +
+      (adminStatus ? '<p class="admin-status" role="status">' + escapeHtml(adminStatus) + '</p>' : "") +
       '<form class="admin-form" id="admin-form">' +
       '<section class="admin-panel"><div class="admin-section-heading"><span>01</span><div><h2 class="serif">Import your manuscript</h2><p>Use a Word document with each chapter title formatted as Heading 1.</p></div></div>' +
       '<label class="admin-field admin-file-field"><span>Word document (.docx)</span><input type="file" name="document" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required><small id="import-status" aria-live="polite">Text and paragraph breaks are imported; images, tables, and complex formatting are not included. The document is parsed in this browser and embedded in the exported JSON.</small></label></section>' +
@@ -363,20 +447,28 @@
       '<label class="admin-field admin-field-wide"><span>Catalog description</span><textarea name="description" rows="3" maxlength="500" required></textarea></label>' +
       '<label class="admin-field admin-field-wide"><span>Access tokens <em>(optional; one per line)</em></span><textarea name="accessTokens" rows="3" placeholder="Leave blank for an open book"></textarea><small>Tokens are included in public JSON files and are convenience-level access only.</small></label>' +
       '</div></section>' +
-      '<section class="admin-panel"><div class="admin-section-heading"><span>03</span><div><h2 class="serif">Catalog and cover settings</h2><p>Choose the cover colors and set the inactivity timeout for book access.</p></div></div>' +
+      '<section class="admin-panel"><div class="admin-section-heading"><span>03</span><div><h2 class="serif">Catalog and cover settings</h2><p>Design a text-and-color cover or upload an image to use as the cover.</p></div></div>' +
       '<div class="admin-fields-grid">' +
       '<label class="admin-field"><span>Cover phrase</span><input name="coverMotif" type="text" maxlength="90" value="A softer way to read" required></label>' +
       '<label class="admin-field"><span>Cover eyebrow</span><input name="coverEyebrow" type="text" maxlength="50" value="A SMALL GUIDE TO" required></label>' +
       '<label class="admin-field"><span>Cover background · first color</span><input name="coverColorStart" type="color" value="#d8e0bd"></label>' +
       '<label class="admin-field"><span>Cover background · second color</span><input name="coverColorEnd" type="color" value="#79947d"></label>' +
       '<label class="admin-field"><span>Cover text color</span><input name="coverInk" type="color" value="#274b3b"></label>' +
+      '<label class="admin-field admin-field-wide admin-file-field"><span>Cover image (optional)</span><input name="coverImage" type="file" accept="image/png,image/jpeg,image/webp"><small id="cover-image-status" aria-live="polite">PNG, JPEG, or WebP up to 1 MB. The image is embedded in the downloaded book file. Uploading one uses it instead of the designed color background.</small></label>' +
       '<label class="admin-field"><span>Access inactivity timeout (minutes)</span><input name="inactiveMinutes" type="number" min="1" max="10080" value="30" required><small>Used by the browser-based token prompt; it does not secure public files.</small></label>' +
       '</div></section>' +
       '<div class="admin-submit-row"><p id="admin-message" role="status" aria-live="polite"></p><button class="button-primary" type="submit">Prepare book file ' + icon("arrowRight", 16) + '</button></div>' +
       '</form><section id="admin-output" aria-live="polite"></section>' +
-      '<section class="admin-published"><div class="admin-section-heading"><span>LIBRARY</span><div><h2 class="serif">Currently published</h2><p>' + books.length + (books.length === 1 ? " book" : " books") + ' in <code>catalog/</code>. Each JSON file becomes one book.</p></div></div>' +
-      (books.length ? '<div class="book-grid">' + books.map(bookCard).join("") + '</div>' : '<p class="empty-state">No books have been published yet.</p>') +
-      '</section></main>' + footer() + '</div>';
+      '<section class="admin-published"><div class="admin-section-heading"><span>LIBRARY</span><div><h2 class="serif">Currently published</h2><p>' + books.length + (books.length === 1 ? " book" : " books") + ' in <code>catalog/</code>. Hide or restore books in the public catalog on this browser.</p></div></div>' +
+      (books.length ? '<div class="admin-published-grid">' + books.map(adminPublishedBookCard).join("") + '</div>' : '<p class="empty-state">No books have been published yet.</p>') +
+      '</section><dialog class="admin-delete-dialog" id="admin-delete-dialog"><form class="admin-delete-form">' +
+      '<h2 class="serif">Take down this book?</h2><p id="admin-delete-book-title"></p>' +
+      '<input type="hidden" name="slug"><label for="admin-delete-password">Admin password</label>' +
+      '<input id="admin-delete-password" name="password" type="password" autocomplete="current-password" required>' +
+      '<p class="form-message" id="admin-delete-message" role="status" aria-live="polite"></p>' +
+      '<div><button class="button-secondary" type="button" data-action="cancel-delete">Cancel</button>' +
+      '<button class="button-danger" type="submit">Prepare removal</button></div></form></dialog>' +
+      '</main>' + footer() + '</div>';
   }
 
   function showAdminExport(book) {
@@ -405,6 +497,21 @@
     link.click();
     link.remove();
     window.setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+  }
+
+  function readFileDataUrl(file) {
+    return new Promise(function (resolve, reject) {
+      const reader = new FileReader();
+      reader.onerror = function () { reject(reader.error || new Error("The cover image could not be read.")); };
+      reader.onload = function () {
+        if (typeof reader.result !== "string") {
+          reject(new Error("The cover image could not be converted."));
+          return;
+        }
+        resolve(reader.result);
+      };
+      reader.readAsDataURL(file);
+    });
   }
 
   function notFound() {
@@ -448,7 +555,7 @@
 
     return '<div class="page-enter">' + header() + '<main class="detail-main"><a href="#/" class="back-link" data-action="home">' +
       icon("arrowLeft", 15) + " Back to the shelves</a><section class=\"detail-hero\"><div class=\"detail-cover-wrap\">" +
-      cover(book, "detail") + '<div class="cover-caption">A GARDEN READING ROOM EDITION</div></div><div class="detail-copy">' +
+      cover(book, "detail") + '<div class="cover-caption">AN EDEN PUBLICATIONS EDITION</div></div><div class="detail-copy">' +
       '<div class="eyebrow muted-eyebrow">' + escapeHtml(book.category.toUpperCase()) +
       (book.isDemo ? '<span class="eyebrow-dot">·</span> DEMO EDITION' : "") + '</div><h1 class="serif">' +
       escapeHtml(book.title) + '<span class="detail-period">.</span></h1><p class="detail-subtitle">' +
@@ -481,42 +588,84 @@
     const key = chapterKey(book, chapter);
     const progress = store.read("progress", {});
     const marks = store.read("marks", []);
+    const rangesByParagraph = store.read("highlight-ranges", {});
     const notes = store.read("notes", {});
     const bookmarks = store.read("chapter-bookmarks", []);
     const fontSize = Math.max(16, Math.min(25, Number(store.read("font-size", 19)) || 19));
-    const theme = store.read("reader-theme", "paper");
+    const themes = ["paper", "warm", "night", "light", "dark"];
+    let theme = store.read("reader-theme", "paper");
+    if (!themes.includes(theme)) theme = "paper";
+    const themeLabels = { paper: "Paper", warm: "Warm", night: "Night", light: "Light", dark: "Dark" };
     const previous = chapters[index - 1];
     const next = chapters[index + 1];
-    const paragraphs = (chapter.paragraphs || []).map(function (paragraph, paragraphIndex) {
-      const paragraphKey = key + ":" + paragraphIndex;
-      const marked = marks.includes(paragraphKey);
-      const note = Object.prototype.hasOwnProperty.call(notes, paragraphKey);
-      return '<div class="paragraph-wrap"><p class="' + (marked ? "marked" : "") + '" data-paragraph="' +
-        paragraphIndex + '">' + escapeHtml(paragraph) + '</p><div class="paragraph-actions">' +
-        '<button class="paragraph-action ' + (marked ? "paragraph-active" : "") + '" type="button" data-action="mark-paragraph" data-index="' +
-        paragraphIndex + '" aria-label="' + (marked ? "Remove highlight" : "Highlight paragraph") + '">' +
-        icon("marker", 14) + "<span>" + (marked ? "Marked" : "Mark") + '</span></button>' +
-        '<button class="paragraph-action" type="button" data-action="add-note" data-index="' + paragraphIndex +
-        '">' + icon("note", 14) + "<span>Note</span></button></div>" +
-        (note ? '<div class="note-box"><label for="note-' + paragraphIndex + '">A note for you</label><textarea id="note-' +
-          paragraphIndex + '" data-note-index="' + paragraphIndex + '" placeholder="Keep a thought here…">' +
-          escapeHtml(notes[paragraphKey]) + '</textarea><span>Private to this device</span></div>' : "") +
-        "</div>";
-    }).join("");
+    const pageCount = Math.max(1, (chapter.paragraphs || []).length);
+    const pageMap = store.read("reader-pages", {});
+    const pageIndex = Math.max(0, Math.min(pageCount - 1,
+      Number.isInteger(Number(pageMap[key])) ? Number(pageMap[key]) : 0));
+    const paragraph = (chapter.paragraphs || [])[pageIndex] || "";
+    const paragraphKey = key + ":" + pageIndex;
+    const isMarked = marks.includes(paragraphKey);
+    const savedRanges = Array.isArray(rangesByParagraph[paragraphKey]) ? rangesByParagraph[paragraphKey] : [];
+    const normalizedRanges = (isMarked ? [{ start: 0, end: paragraph.length }] : savedRanges)
+      .filter(function (range) {
+        return range && Number.isInteger(range.start) && Number.isInteger(range.end) &&
+          range.start >= 0 && range.end <= paragraph.length && range.start < range.end;
+      }).sort(function (first, second) { return first.start - second.start; })
+      .reduce(function (result, range) {
+        const last = result[result.length - 1];
+        if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+        else result.push({ start: range.start, end: range.end });
+        return result;
+      }, []);
+    let paragraphHtml = "";
+    let textOffset = 0;
+    normalizedRanges.forEach(function (range) {
+      paragraphHtml += escapeHtml(paragraph.slice(textOffset, range.start)) +
+        "<mark>" + escapeHtml(paragraph.slice(range.start, range.end)) + "</mark>";
+      textOffset = range.end;
+    });
+    paragraphHtml += escapeHtml(paragraph.slice(textOffset));
+    const noteExists = Object.prototype.hasOwnProperty.call(notes, paragraphKey);
+    const noteOpen = Boolean(store.read("open-notes", {})[paragraphKey]);
     const chapterBookmark = bookmarks.includes(key);
-    const themeName = theme === "night" ? "Night" : theme === "warm" ? "Warm" : "Paper";
+    const themeName = themeLabels[theme];
     const toc = chapters.map(function (item, chapterIndex) {
       return '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(item.slug)) +
         '" class="contents-popover-link ' + (item.slug === chapter.slug ? "current" : "") + '"><span>' +
         String(chapterIndex + 1).padStart(2, "0") + "</span>" + escapeHtml(item.title) + "</a>";
     }).join("");
+    const previousPage = pageIndex > 0
+      ? '<button class="chapter-pager previous" type="button" data-action="reader-page" data-page="' +
+        (pageIndex - 1) + '">' + icon("arrowLeft", 16) + '<span><small>PREVIOUS PAGE</small>Page ' +
+        pageIndex + "</span></button>"
+      : previous
+        ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(previous.slug)) +
+          '" class="chapter-pager previous">' + icon("arrowLeft", 16) + '<span><small>PREVIOUS CHAPTER</small>' +
+          escapeHtml(previous.title) + "</span></a>"
+        : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
+          '" class="chapter-pager previous">' + icon("arrowLeft", 16) + "<span><small>BACK TO BOOK</small>Contents</span></a>";
+    const nextPage = pageIndex < pageCount - 1
+      ? '<button class="chapter-pager next" type="button" data-action="reader-page" data-page="' +
+        (pageIndex + 1) + '"><span><small>NEXT PAGE</small>Page ' + (pageIndex + 2) +
+        "</span>" + icon("arrowRight", 16) + "</button>"
+      : next
+        ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(next.slug)) +
+          '" class="chapter-pager next"><span><small>UP NEXT</small>' + escapeHtml(next.title) +
+          "</span>" + icon("arrowRight", 16) + "</a>"
+        : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
+          '" class="chapter-pager next"><span><small>THAT’S A WRAP</small>Return to the book</span>' +
+          icon("check", 16) + "</a>";
 
-    return '<div class="reader-shell reader-' + escapeHtml(theme) + '" data-reader-key="' + escapeHtml(key) + '">' +
+    return '<div class="reader-shell reader-' + escapeHtml(theme) + '" data-reader-key="' + escapeHtml(key) +
+      '" data-page-index="' + pageIndex + '" data-page-count="' + pageCount + '">' +
       '<header class="reader-header"><a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
       '" class="reader-back">' + icon("arrowLeft", 16) + "<span>Book details</span></a>" +
       '<div class="reader-book-label">' + icon("book", 15) + "<span>" + escapeHtml(book.title) +
       '</span><span class="reader-label-separator">/</span><strong>' + escapeHtml(chapter.title) + "</strong></div>" +
-      '<div class="reader-tools"><button class="reader-tool" type="button" data-action="contents">' + icon("menu", 17) +
+      '<div class="reader-tools"><button class="reader-tool highlight-tool ' + (highlightMode ? "tool-active" : "") +
+      '" type="button" data-action="toggle-highlight" aria-pressed="' + highlightMode +
+      '" aria-label="Highlight selected text" title="Select text to highlight">' + icon("marker", 17) +
+      '<span>Highlight</span></button><button class="reader-tool" type="button" data-action="contents">' + icon("menu", 17) +
       '<span>Contents</span></button><button class="reader-tool reader-bookmark ' + (chapterBookmark ? "bookmark-on" : "") +
       '" type="button" data-action="bookmark-chapter" aria-label="' + (chapterBookmark ? "Remove chapter bookmark" : "Bookmark chapter") +
       '">' + icon("bookmark", 16, chapterBookmark) + "<span>" + (chapterBookmark ? "Saved" : "Bookmark") +
@@ -524,38 +673,47 @@
       icon("minus", 17) + '</button><span class="font-size-label" id="font-size-label">' + fontSize +
       '</span><button class="reader-tool" type="button" data-action="font-up" aria-label="Increase text size">' +
       icon("plus", 17) + '</button><button class="reader-tool theme-tool" type="button" data-action="theme" aria-label="Reader theme: ' +
-      themeName + '">' + icon(theme === "night" ? "sun" : "moon", 17) + '<span>' + themeName +
+      themeName + '">' + icon(theme === "night" || theme === "dark" ? "sun" : "moon", 17) + '<span>' + themeName +
       '</span>' + icon("chevron", 13) + '</button></div></header>' +
       '<div class="contents-popover hidden" id="contents-popover"><div class="contents-popover-head"><strong>In this book</strong>' +
       '<button type="button" data-action="close-contents" aria-label="Close contents">' + icon("close", 16) +
       "</button></div>" + toc + '</div><div class="reading-progress-top"><span id="reading-progress" style="width:' +
-      (progress[key] || 0) + '%"></span></div><main class="reader-content"><div class="reader-kicker"><span>CHAPTER ' +
+      (progress[key] || 0) + '%"></span></div><main class="reader-content"><section class="reader-page">' +
+      '<div class="reader-page-heading"><div class="reader-kicker"><span>CHAPTER ' +
       String(index + 1).padStart(2, "0") + '</span><span class="kicker-rule"></span><span>' +
-      escapeHtml(book.category.toUpperCase()) + '</span></div><h1 class="reader-title serif">' +
+      escapeHtml(book.category.toUpperCase()) + '</span><span class="reader-page-count">PAGE ' +
+      (pageIndex + 1) + ' / ' + pageCount + '</span></div><h1 class="reader-title serif">' +
       escapeHtml(chapter.title) + '<span>.</span></h1><div class="reader-byline"><span>A page from <i>' +
-      escapeHtml(book.title) + '</i></span><span class="reader-byline-actions">' +
-      "<span>" + icon("clock", 13) + " 3 min</span></span></div>" +
-      '<div class="reader-prose" id="reader-prose" style="font-size:' + fontSize + 'px">' + paragraphs + "</div>" +
-      '<div class="reader-endnote"><span class="endnote-flower">' + icon("leaf", 17) +
-      '</span><span>Take what is useful. Let the rest settle.</span></div><nav class="chapter-pagination" aria-label="Chapter navigation">' +
-      (previous
-        ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(previous.slug)) +
-          '" class="chapter-pager previous">' + icon("arrowLeft", 16) + '<span><small>PREVIOUS</small>' +
-          escapeHtml(previous.title) + "</span></a>"
-        : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
-          '" class="chapter-pager previous">' + icon("arrowLeft", 16) + "<span><small>BACK TO BOOK</small>All chapters</span></a>") +
-      (next
-        ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(next.slug)) +
-          '" class="chapter-pager next"><span><small>UP NEXT</small>' + escapeHtml(next.title) +
-          "</span>" + icon("arrowRight", 16) + "</a>"
-        : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
-          '" class="chapter-pager next"><span><small>THAT’S A WRAP</small>Return to the book</span>' + icon("check", 16) + "</a>") +
-      '</nav></main><div class="reader-footer"><a href="#/" data-action="home">' +
-      icon("leaf", 15) + " Garden Reading Room</a><span>Your reading place is saved on this device.</span></div></div>";
+      escapeHtml(book.title) + '</i></span><span>' + icon("clock", 13) + " " +
+      Number(book.readingMinutes || 1) + ' min read</span></div></div>' +
+      '<div class="reader-prose" id="reader-prose" style="font-size:' + fontSize + 'px"><p data-paragraph="' +
+      pageIndex + '">' + paragraphHtml + '</p></div>' +
+      '<section class="page-notes"><div class="page-notes-heading"><div><strong>Notes for this page</strong>' +
+      '<span>Saved on this device</span></div>' + (!noteExists || !noteOpen
+        ? '<button class="paragraph-action" type="button" data-action="add-note" data-index="' + pageIndex +
+          '">' + icon("note", 15) + '<span>' + (noteExists ? "Edit note" : "Add a note") + '</span></button>'
+        : "") + '</div>' +
+      (noteExists && noteOpen ? '<textarea id="note-' + pageIndex + '" data-note-index="' + pageIndex +
+        '" placeholder="Keep a thought here…">' + escapeHtml(notes[paragraphKey]) + '</textarea>' : "") +
+      '</section><div class="reader-page-bottom"><nav class="chapter-pagination" aria-label="Page navigation">' +
+      previousPage + nextPage + '</nav></div></section></main><div class="reader-footer"><a href="#/" data-action="home">' +
+      icon("leaf", 15) + " Eden Publications</a><span>Your reading place is saved on this device.</span></div></div>";
   }
 
   function render(options) {
     const current = route();
+    if (current !== "/admin") {
+      adminCoverImage = "";
+      coverImageLoadId++;
+      adminImportedFile = null;
+      adminImportedChapters = null;
+      adminBookExport = null;
+      try {
+        sessionStorage.removeItem("eden-admin-unlocked");
+      } catch (error) {
+        console.error("Could not clear the admin session.", error);
+      }
+    }
     let content;
     if (current === "/") content = catalog();
     else if (current === "/admin") content = adminPage();
@@ -594,8 +752,9 @@
     const shell = document.querySelector(".reader-shell");
     if (!shell) return;
     const key = shell.dataset.readerKey;
-    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
-    const percent = maxScroll <= 0 ? 100 : Math.min(100, Math.round((window.scrollY / maxScroll) * 100));
+    const pageIndex = Number(shell.dataset.pageIndex);
+    const pageCount = Number(shell.dataset.pageCount);
+    const percent = Math.round(((pageIndex + 1) / pageCount) * 100);
     const progress = store.read("progress", {});
     const value = Math.max(progress[key] || 0, percent);
     if (value !== progress[key]) {
@@ -620,6 +779,26 @@
     const action = control.dataset.action;
     if (action === "download-book" && adminBookExport) {
       downloadJson(adminBookExport.slug + ".json", adminBookExport);
+    } else if (action === "delete-book") {
+      const book = findBook(control.dataset.book);
+      const dialog = document.getElementById("admin-delete-dialog");
+      const form = dialog && dialog.querySelector(".admin-delete-form");
+      if (!book || !dialog || !form) return;
+      form.elements.namedItem("slug").value = book.slug;
+      form.elements.namedItem("password").value = "";
+      document.getElementById("admin-delete-book-title").textContent =
+        "Hide “" + book.title + "” from the public library on this browser? It will remain available in Admin.";
+      document.getElementById("admin-delete-message").textContent = "";
+      dialog.showModal();
+      form.elements.namedItem("password").focus();
+    } else if (action === "restore-book") {
+      const slug = control.dataset.book;
+      removedBookSlugs = removedBookSlugs.filter(function (item) { return item !== slug; });
+      store.write("hidden-books", removedBookSlugs);
+      adminStatus = "The book is visible in the public library again on this browser.";
+      render({ preserveScroll: true });
+    } else if (action === "cancel-delete") {
+      document.getElementById("admin-delete-dialog")?.close();
     } else if (action === "home") {
       event.preventDefault();
       if (route() === "/") window.scrollTo({ top: 0, behavior: "smooth" });
@@ -653,22 +832,41 @@
       document.getElementById("contents-popover")?.classList.toggle("hidden");
     } else if (action === "close-contents") {
       document.getElementById("contents-popover")?.classList.add("hidden");
+    } else if (action === "toggle-highlight") {
+      highlightMode = !highlightMode;
+      control.classList.toggle("tool-active", highlightMode);
+      control.setAttribute("aria-pressed", String(highlightMode));
+      control.setAttribute("title", highlightMode ? "Select text to highlight" : "Turn highlighting on");
+      const label = control.querySelector("span");
+      if (label) label.textContent = highlightMode ? "Select text" : "Highlight";
     } else if (action === "font-down") {
       setReaderFont(-1);
     } else if (action === "font-up") {
       setReaderFont(1);
     } else if (action === "theme") {
       const currentTheme = store.read("reader-theme", "paper");
-      const nextTheme = currentTheme === "paper" ? "warm" : currentTheme === "warm" ? "night" : "paper";
+      const themes = ["paper", "warm", "night", "light", "dark"];
+      const nextTheme = themes[(themes.indexOf(currentTheme) + 1) % themes.length];
+      const labels = { paper: "Paper", warm: "Warm", night: "Night", light: "Light", dark: "Dark" };
       store.write("reader-theme", nextTheme);
       const shell = document.querySelector(".reader-shell");
       if (shell) {
-        shell.classList.remove("reader-paper", "reader-warm", "reader-night");
+        shell.classList.remove("reader-paper", "reader-warm", "reader-night", "reader-light", "reader-dark");
         shell.classList.add("reader-" + nextTheme);
         const button = document.querySelector('[data-action="theme"]');
-        if (button) button.innerHTML = icon(nextTheme === "night" ? "sun" : "moon", 17) +
-          "<span>" + (nextTheme === "night" ? "Night" : nextTheme === "warm" ? "Warm" : "Paper") + "</span>" + icon("chevron", 13);
+        if (button) {
+          button.innerHTML = icon(nextTheme === "night" || nextTheme === "dark" ? "sun" : "moon", 17) +
+            "<span>" + labels[nextTheme] + "</span>" + icon("chevron", 13);
+          button.setAttribute("aria-label", "Reader theme: " + labels[nextTheme]);
+        }
       }
+    } else if (action === "reader-page") {
+      const shell = document.querySelector(".reader-shell");
+      if (!shell) return;
+      const pageMap = store.read("reader-pages", {});
+      pageMap[shell.dataset.readerKey] = Number(control.dataset.page);
+      store.write("reader-pages", pageMap);
+      render();
     } else if (action === "bookmark-chapter") {
       const shell = document.querySelector(".reader-shell");
       if (!shell) return;
@@ -678,34 +876,78 @@
         ? bookmarks.filter(function (item) { return item !== key; })
         : bookmarks.concat(key));
       render({ preserveScroll: true });
-    } else if (action === "mark-paragraph") {
-      const shell = document.querySelector(".reader-shell");
-      if (!shell) return;
-      const index = Number(control.dataset.index);
-      const key = shell.dataset.readerKey + ":" + index;
-      const marks = store.read("marks", []);
-      const marked = marks.includes(key);
-      store.write("marks", marked ? marks.filter(function (item) { return item !== key; }) : marks.concat(key));
-      const paragraph = shell.querySelector('[data-paragraph="' + index + '"]');
-      paragraph?.classList.toggle("marked", !marked);
-      control.classList.toggle("paragraph-active", !marked);
-      control.setAttribute("aria-label", marked ? "Highlight paragraph" : "Remove highlight");
-      const label = control.querySelector("span");
-      if (label) label.textContent = marked ? "Mark" : "Marked";
     } else if (action === "add-note") {
       const index = Number(control.dataset.index);
       const shell = document.querySelector(".reader-shell");
       if (!shell) return;
       const key = shell.dataset.readerKey + ":" + index;
       const notes = store.read("notes", {});
+      const openNotes = store.read("open-notes", {});
+      openNotes[key] = true;
+      store.write("open-notes", openNotes);
       if (!Object.prototype.hasOwnProperty.call(notes, key)) {
         notes[key] = "";
         store.write("notes", notes);
-        render({ preserveScroll: true });
       }
+      render({ preserveScroll: true });
       window.setTimeout(function () { document.getElementById("note-" + index)?.focus(); }, 0);
     }
   });
+
+  function applyTextHighlight() {
+    if (!highlightMode) return;
+    const shell = document.querySelector(".reader-shell");
+    const selection = window.getSelection();
+    if (!shell || !selection || selection.isCollapsed || !selection.rangeCount) return;
+    const range = selection.getRangeAt(0);
+    const paragraph = (range.commonAncestorContainer.nodeType === Node.ELEMENT_NODE
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement)?.closest("[data-paragraph]");
+    if (!paragraph || !paragraph.contains(range.startContainer) || !paragraph.contains(range.endContainer)) return;
+    const beforeStart = range.cloneRange();
+    beforeStart.selectNodeContents(paragraph);
+    beforeStart.setEnd(range.startContainer, range.startOffset);
+    const beforeEnd = range.cloneRange();
+    beforeEnd.selectNodeContents(paragraph);
+    beforeEnd.setEnd(range.endContainer, range.endOffset);
+    const start = beforeStart.toString().length;
+    const end = beforeEnd.toString().length;
+    if (start >= end) return;
+    const key = shell.dataset.readerKey + ":" + paragraph.dataset.paragraph;
+    const rangesByParagraph = store.read("highlight-ranges", {});
+    const marks = store.read("marks", []);
+    const isLegacyMarked = marks.includes(key);
+    const ranges = isLegacyMarked
+      ? [{ start: 0, end: paragraph.textContent.length }]
+      : Array.isArray(rangesByParagraph[key]) ? rangesByParagraph[key].filter(function (item) {
+        return item && Number.isInteger(item.start) && Number.isInteger(item.end) &&
+          item.start >= 0 && item.end <= paragraph.textContent.length && item.start < item.end;
+      }) : [];
+    const fullyHighlighted = ranges.some(function (item) {
+      return item && item.start <= start && item.end >= end;
+    });
+    let updatedRanges;
+    if (fullyHighlighted) {
+      updatedRanges = ranges.reduce(function (result, item) {
+        if (item.end <= start || item.start >= end) result.push(item);
+        else {
+          if (item.start < start) result.push({ start: item.start, end: start });
+          if (item.end > end) result.push({ start: end, end: item.end });
+        }
+        return result;
+      }, []);
+    } else {
+      updatedRanges = ranges.concat({ start: start, end: end });
+    }
+    if (isLegacyMarked) store.write("marks", marks.filter(function (item) { return item !== key; }));
+    rangesByParagraph[key] = updatedRanges;
+    store.write("highlight-ranges", rangesByParagraph);
+    selection.removeAllRanges();
+    render({ preserveScroll: true });
+  }
+
+  document.addEventListener("mouseup", applyTextHighlight);
+  document.addEventListener("touchend", applyTextHighlight, { passive: true });
 
   document.addEventListener("input", function (event) {
     const adminForm = event.target.closest(".admin-form");
@@ -736,6 +978,38 @@
 
   document.addEventListener("change", async function (event) {
     const input = event.target;
+    if (input.matches('.admin-form input[name="coverImage"]')) {
+      adminCoverImage = "";
+      const loadId = ++coverImageLoadId;
+      adminBookExport = null;
+      const output = document.getElementById("admin-output");
+      if (output) output.innerHTML = "";
+      const message = document.getElementById("admin-message");
+      if (message) message.textContent = "";
+      const status = document.getElementById("cover-image-status");
+      const file = input.files && input.files[0];
+      if (!file) {
+        if (status) status.textContent = "No uploaded image. The designed color cover will be used.";
+        return;
+      }
+      if (!["image/png", "image/jpeg", "image/webp"].includes(file.type) || file.size > 1024 * 1024) {
+        input.value = "";
+        if (status) status.textContent = "Choose a PNG, JPEG, or WebP image no larger than 1 MB.";
+        return;
+      }
+      if (status) status.textContent = "Reading " + file.name + "…";
+      try {
+        const image = await readFileDataUrl(file);
+        if (loadId !== coverImageLoadId) return;
+        adminCoverImage = image;
+        if (status) status.textContent = file.name + " is ready and will be embedded in the downloaded book file.";
+      } catch (error) {
+        if (loadId !== coverImageLoadId) return;
+        input.value = "";
+        if (status) status.textContent = error.message;
+      }
+      return;
+    }
     if (!input.matches('.admin-form input[name="document"]')) return;
     const file = input.files && input.files[0];
     adminImportedFile = null;
@@ -767,6 +1041,52 @@
   });
 
   document.addEventListener("submit", async function (event) {
+    const adminUnlockForm = event.target.closest(".admin-unlock-form");
+    if (adminUnlockForm) {
+      event.preventDefault();
+      const message = document.getElementById("admin-unlock-message");
+      const password = adminUnlockForm.elements.namedItem("password").value;
+      try {
+        if (!(await verifyAdminPassword(password))) {
+          if (message) message.textContent = "That password did not match.";
+          adminUnlockForm.elements.namedItem("password").select();
+          return;
+        }
+        sessionStorage.setItem("eden-admin-unlocked", "true");
+        adminStatus = "";
+        render();
+      } catch (error) {
+        if (message) message.textContent = "Admin sign-in is unavailable in this browser: " + error.message;
+      }
+      return;
+    }
+    const adminDeleteForm = event.target.closest(".admin-delete-form");
+    if (adminDeleteForm) {
+      event.preventDefault();
+      const message = document.getElementById("admin-delete-message");
+      const slug = adminDeleteForm.elements.namedItem("slug").value;
+      const book = findBook(slug);
+      if (!book) {
+        if (message) message.textContent = "That book is no longer in the published catalog.";
+        return;
+      }
+      try {
+        const password = adminDeleteForm.elements.namedItem("password").value;
+        if (!(await verifyAdminPassword(password))) {
+          if (message) message.textContent = "That password did not match. The book was not removed.";
+          adminDeleteForm.elements.namedItem("password").select();
+          return;
+        }
+        removedBookSlugs = Array.from(new Set(removedBookSlugs.concat(slug))).sort();
+        store.write("hidden-books", removedBookSlugs);
+        adminStatus = "The book is now hidden from the public library on this browser. It remains available in Admin and can be restored.";
+        document.getElementById("admin-delete-dialog")?.close();
+        render({ preserveScroll: true });
+      } catch (error) {
+        if (message) message.textContent = "The removal could not be prepared: " + error.message;
+      }
+      return;
+    }
     const adminForm = event.target.closest(".admin-form");
     if (adminForm) {
       event.preventDefault();
@@ -788,8 +1108,8 @@
         if (message) message.textContent = "Fill in each required book detail before preparing the files.";
         return;
       }
-      if (books.some(function (book) { return book.slug === slug; })) {
-        if (message) message.textContent = "A book with that ID already exists in catalog/. Choose a different ID.";
+      if (books.some(function (book) { return book.slug === slug; }) || removedBookSlugs.includes(slug)) {
+        if (message) message.textContent = "That book ID is already published or has been removed. Choose a different ID.";
         return;
       }
       const readingMinutes = Number(value("readingMinutes"));
@@ -815,7 +1135,8 @@
           background: "linear-gradient(150deg, " + value("coverColorStart") + " 0%, " + value("coverColorEnd") + " 100%)",
           ink: value("coverInk"),
           eyebrow: value("coverEyebrow"),
-          motif: value("coverMotif")
+          motif: value("coverMotif"),
+          image: adminCoverImage
         },
         readingMinutes: readingMinutes,
         inactiveMinutes: inactiveMinutes,
