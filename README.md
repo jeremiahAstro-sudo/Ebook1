@@ -6,7 +6,7 @@ This is a static site deployed to GitHub Pages by GitHub Actions. The build gene
 
 Open **Admin**, unlock the publishing workspace, and import a `.docx` file with each chapter title formatted as **Heading 1**. Fill in the catalog details and either design a text-and-color cover or upload a PNG, JPEG, or WebP cover image (up to 1 MB). The image is embedded in the exported book JSON. Select **Prepare book file**, then download the result.
 
-Each book lives in its own JSON file in [`catalog/`](./catalog/), named to match its slug (for example, `the-gentle-table.json`). To publish a book, add that file to `catalog/`, commit, and push. GitHub Actions rebuilds the site and deploys the new catalog.
+Each book lives in its own JSON file in `catalog/`, named to match its slug (for example, `the-gentle-table.json`). To publish a book, add the file to `catalog/`, creating the folder first if it is absent, then commit and push. GitHub Actions rebuilds the site and deploys the new catalog. If the last catalog file is deleted, Git removes the now-empty folder; the build treats the missing folder as an empty catalog.
 
 ## Remove a book
 

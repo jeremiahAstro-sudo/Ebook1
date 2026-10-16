@@ -7,13 +7,16 @@ const catalogDirectory = path.join(repositoryRoot, "catalog");
 const outputDirectory = path.join(repositoryRoot, "_site");
 const siteFiles = ["index.html", "app.js", "styles.css", "favicon.svg"];
 
-if (!fs.existsSync(catalogDirectory) || !fs.statSync(catalogDirectory).isDirectory()) {
-  throw new Error("The catalog/ directory does not exist.");
+const catalogExists = fs.existsSync(catalogDirectory);
+if (catalogExists && !fs.statSync(catalogDirectory).isDirectory()) {
+  throw new Error("catalog/ exists but is not a directory.");
 }
 
-const bookFiles = fs.readdirSync(catalogDirectory)
-  .filter(function (filename) { return filename.endsWith(".json"); })
-  .sort();
+const bookFiles = catalogExists
+  ? fs.readdirSync(catalogDirectory)
+    .filter(function (filename) { return filename.endsWith(".json"); })
+    .sort()
+  : [];
 
 const seenSlugs = new Set();
 bookFiles.forEach(function (filename) {
