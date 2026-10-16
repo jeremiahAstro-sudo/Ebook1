@@ -16,7 +16,7 @@ This is a static website, so a browser-only removal cannot update what other vis
 
 ## Reader
 
-Each imported paragraph is shown as one reading page, sized to fill a screen where the content allows. Use the page controls to move through a chapter. The reader includes Paper, Warm, Night, Light, and Dark themes. Turn on **Highlight** in the top ribbon, then select text to mark it; use **Add a note** at the bottom of a page to keep a device-local note.
+Each chapter is displayed as continuous, scrollable text; use the chapter controls at the end to move between chapters. The reader includes Paper, Warm, Night, Light (white), and Dark (black) themes. Turn on **Highlight** in the top ribbon, then select text to mark it; use **Add a note** at the bottom of the chapter to keep a device-local note. During DOCX import, a section headed **Contents** or **Table of Contents** at Heading 1 level and its entries are omitted from the chapter list.
 
 Reader progress, highlights, notes, and saved books are stored in that browser and do not sync between devices.
 

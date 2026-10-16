@@ -126,6 +126,7 @@
     const chapters = [];
     let current = null;
     let hasChapterHeading = false;
+    let skipTableOfContents = false;
 
     function addParagraph(text) {
       const value = String(text || "").trim();
@@ -142,6 +143,12 @@
         const title = element.textContent.trim();
         if (!title) return;
         hasChapterHeading = true;
+        if (/^(table\s+of\s+)?contents$/i.test(title)) {
+          current = null;
+          skipTableOfContents = true;
+          return;
+        }
+        skipTableOfContents = false;
         const baseSlug = title.toLowerCase().normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
           .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "chapter";
         let slug = baseSlug;
@@ -149,6 +156,8 @@
         while (chapters.some(function (chapter) { return chapter.slug === slug; })) slug = baseSlug + "-" + suffix++;
         current = { slug: slug, title: title, paragraphs: [] };
         chapters.push(current);
+      } else if (skipTableOfContents) {
+        return;
       } else if (element.tagName === "UL" || element.tagName === "OL") {
         Array.from(element.querySelectorAll("li")).forEach(function (item) { addParagraph(item.textContent); });
       } else {
@@ -435,27 +444,27 @@
       (adminStatus ? '<p class="admin-status" role="status">' + escapeHtml(adminStatus) + '</p>' : "") +
       '<form class="admin-form" id="admin-form">' +
       '<section class="admin-panel"><div class="admin-section-heading"><span>01</span><div><h2 class="serif">Import your manuscript</h2><p>Use a Word document with each chapter title formatted as Heading 1.</p></div></div>' +
-      '<label class="admin-field admin-file-field"><span>Word document (.docx)</span><input type="file" name="document" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required><small id="import-status" aria-live="polite">Text and paragraph breaks are imported; images, tables, and complex formatting are not included. The document is parsed in this browser and embedded in the exported JSON.</small></label></section>' +
+      '<label class="admin-field admin-file-field"><span>Word document (.docx) · required</span><input type="file" name="document" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required><small id="import-status" aria-live="polite">Text and paragraph breaks are imported; images, tables, and complex formatting are not included. A Heading 1 titled “Contents” or “Table of Contents” and its entries are skipped. The document is parsed in this browser and embedded in the exported JSON.</small></label></section>' +
       '<section class="admin-panel"><div class="admin-section-heading"><span>02</span><div><h2 class="serif">Book details</h2><p>These details appear in the catalog and on the book page.</p></div></div>' +
       '<div class="admin-fields-grid">' +
-      '<label class="admin-field"><span>Title</span><input name="title" type="text" maxlength="120" required></label>' +
-      '<label class="admin-field"><span>Book ID</span><input name="slug" type="text" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="80" placeholder="a-short-book-id" required data-auto="true"><small>Lowercase letters, numbers, and single hyphens only.</small></label>' +
-      '<label class="admin-field"><span>Subtitle</span><input name="subtitle" type="text" maxlength="180" required></label>' +
-      '<label class="admin-field"><span>Author</span><input name="author" type="text" maxlength="120" required></label>' +
-      '<label class="admin-field"><span>Category</span><input name="category" type="text" maxlength="80" required></label>' +
-      '<label class="admin-field"><span>Estimated reading time (minutes)</span><input name="readingMinutes" type="number" min="1" max="10000" value="20" required></label>' +
-      '<label class="admin-field admin-field-wide"><span>Catalog description</span><textarea name="description" rows="3" maxlength="500" required></textarea></label>' +
+      '<label class="admin-field"><span>Title <em>(optional)</em></span><input name="title" type="text" maxlength="120" placeholder="Defaults to the document filename"></label>' +
+      '<label class="admin-field"><span>Book ID <em>(optional)</em></span><input name="slug" type="text" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="80" placeholder="Defaults to the title" data-auto="true"><small>Lowercase letters, numbers, and single hyphens only.</small></label>' +
+      '<label class="admin-field"><span>Subtitle <em>(optional)</em></span><input name="subtitle" type="text" maxlength="180"></label>' +
+      '<label class="admin-field"><span>Author <em>(optional)</em></span><input name="author" type="text" maxlength="120" placeholder="Eden Publications"></label>' +
+      '<label class="admin-field"><span>Category <em>(optional)</em></span><input name="category" type="text" maxlength="80" placeholder="Uncategorized"></label>' +
+      '<label class="admin-field"><span>Estimated reading time (minutes) <em>(optional)</em></span><input name="readingMinutes" type="number" min="1" max="10000" placeholder="20"></label>' +
+      '<label class="admin-field admin-field-wide"><span>Catalog description <em>(optional)</em></span><textarea name="description" rows="3" maxlength="500"></textarea></label>' +
       '<label class="admin-field admin-field-wide"><span>Access tokens <em>(optional; one per line)</em></span><textarea name="accessTokens" rows="3" placeholder="Leave blank for an open book"></textarea><small>Tokens are included in public JSON files and are convenience-level access only.</small></label>' +
       '</div></section>' +
       '<section class="admin-panel"><div class="admin-section-heading"><span>03</span><div><h2 class="serif">Catalog and cover settings</h2><p>Design a text-and-color cover or upload an image to use as the cover.</p></div></div>' +
       '<div class="admin-fields-grid">' +
-      '<label class="admin-field"><span>Cover phrase</span><input name="coverMotif" type="text" maxlength="90" value="A softer way to read" required></label>' +
-      '<label class="admin-field"><span>Cover eyebrow</span><input name="coverEyebrow" type="text" maxlength="50" value="A SMALL GUIDE TO" required></label>' +
+      '<label class="admin-field"><span>Cover phrase <em>(optional)</em></span><input name="coverMotif" type="text" maxlength="90" placeholder="Defaults to the book title"></label>' +
+      '<label class="admin-field"><span>Cover eyebrow <em>(optional)</em></span><input name="coverEyebrow" type="text" maxlength="50" placeholder="A SMALL GUIDE TO"></label>' +
       '<label class="admin-field"><span>Cover background · first color</span><input name="coverColorStart" type="color" value="#d8e0bd"></label>' +
       '<label class="admin-field"><span>Cover background · second color</span><input name="coverColorEnd" type="color" value="#79947d"></label>' +
       '<label class="admin-field"><span>Cover text color</span><input name="coverInk" type="color" value="#274b3b"></label>' +
       '<label class="admin-field admin-field-wide admin-file-field"><span>Cover image (optional)</span><input name="coverImage" type="file" accept="image/png,image/jpeg,image/webp"><small id="cover-image-status" aria-live="polite">PNG, JPEG, or WebP up to 1 MB. The image is embedded in the downloaded book file. Uploading one uses it instead of the designed color background.</small></label>' +
-      '<label class="admin-field"><span>Access inactivity timeout (minutes)</span><input name="inactiveMinutes" type="number" min="1" max="10080" value="30" required><small>Used by the browser-based token prompt; it does not secure public files.</small></label>' +
+      '<label class="admin-field"><span>Access inactivity timeout (minutes) <em>(optional)</em></span><input name="inactiveMinutes" type="number" min="1" max="10080" placeholder="30"><small>Used by the browser-based token prompt; it does not secure public files.</small></label>' +
       '</div></section>' +
       '<div class="admin-submit-row"><p id="admin-message" role="status" aria-live="polite"></p><button class="button-primary" type="submit">Prepare book file ' + icon("arrowRight", 16) + '</button></div>' +
       '</form><section id="admin-output" aria-live="polite"></section>' +
@@ -574,6 +583,30 @@
       '</div></section></main>' + footer() + "</div>";
   }
 
+  function renderHighlightedText(paragraph, paragraphKey, marks, rangesByParagraph) {
+    const legacyMarked = marks.includes(paragraphKey);
+    const ranges = (legacyMarked ? [{ start: 0, end: paragraph.length }] :
+      Array.isArray(rangesByParagraph[paragraphKey]) ? rangesByParagraph[paragraphKey] : [])
+      .filter(function (range) {
+        return range && Number.isInteger(range.start) && Number.isInteger(range.end) &&
+          range.start >= 0 && range.end <= paragraph.length && range.start < range.end;
+      }).sort(function (first, second) { return first.start - second.start; })
+      .reduce(function (result, range) {
+        const last = result[result.length - 1];
+        if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
+        else result.push({ start: range.start, end: range.end });
+        return result;
+      }, []);
+    let html = "";
+    let offset = 0;
+    ranges.forEach(function (range) {
+      html += escapeHtml(paragraph.slice(offset, range.start)) +
+        "<mark>" + escapeHtml(paragraph.slice(range.start, range.end)) + "</mark>";
+      offset = range.end;
+    });
+    return html + escapeHtml(paragraph.slice(offset));
+  }
+
   function reader(bookSlug, chapterSlug) {
     const book = findBook(bookSlug);
     if (!book) return notFound();
@@ -590,6 +623,7 @@
     const marks = store.read("marks", []);
     const rangesByParagraph = store.read("highlight-ranges", {});
     const notes = store.read("notes", {});
+    const openNotes = store.read("open-notes", {});
     const bookmarks = store.read("chapter-bookmarks", []);
     const fontSize = Math.max(16, Math.min(25, Number(store.read("font-size", 19)) || 19));
     const themes = ["paper", "warm", "night", "light", "dark"];
@@ -598,66 +632,45 @@
     const themeLabels = { paper: "Paper", warm: "Warm", night: "Night", light: "Light", dark: "Dark" };
     const previous = chapters[index - 1];
     const next = chapters[index + 1];
-    const pageCount = Math.max(1, (chapter.paragraphs || []).length);
-    const pageMap = store.read("reader-pages", {});
-    const pageIndex = Math.max(0, Math.min(pageCount - 1,
-      Number.isInteger(Number(pageMap[key])) ? Number(pageMap[key]) : 0));
-    const paragraph = (chapter.paragraphs || [])[pageIndex] || "";
-    const paragraphKey = key + ":" + pageIndex;
-    const isMarked = marks.includes(paragraphKey);
-    const savedRanges = Array.isArray(rangesByParagraph[paragraphKey]) ? rangesByParagraph[paragraphKey] : [];
-    const normalizedRanges = (isMarked ? [{ start: 0, end: paragraph.length }] : savedRanges)
-      .filter(function (range) {
-        return range && Number.isInteger(range.start) && Number.isInteger(range.end) &&
-          range.start >= 0 && range.end <= paragraph.length && range.start < range.end;
-      }).sort(function (first, second) { return first.start - second.start; })
-      .reduce(function (result, range) {
-        const last = result[result.length - 1];
-        if (last && range.start <= last.end) last.end = Math.max(last.end, range.end);
-        else result.push({ start: range.start, end: range.end });
-        return result;
-      }, []);
-    let paragraphHtml = "";
-    let textOffset = 0;
-    normalizedRanges.forEach(function (range) {
-      paragraphHtml += escapeHtml(paragraph.slice(textOffset, range.start)) +
-        "<mark>" + escapeHtml(paragraph.slice(range.start, range.end)) + "</mark>";
-      textOffset = range.end;
-    });
-    paragraphHtml += escapeHtml(paragraph.slice(textOffset));
-    const noteExists = Object.prototype.hasOwnProperty.call(notes, paragraphKey);
-    const noteOpen = Boolean(store.read("open-notes", {})[paragraphKey]);
     const chapterBookmark = bookmarks.includes(key);
-    const themeName = themeLabels[theme];
+    const chapterNoteKey = key + ":chapter";
+    const chapterNoteOpen = Boolean(openNotes[chapterNoteKey]);
+    const paragraphs = (chapter.paragraphs || []).map(function (paragraph, paragraphIndex) {
+      const paragraphKey = key + ":" + paragraphIndex;
+      return '<p data-paragraph="' + paragraphIndex + '">' +
+        renderHighlightedText(paragraph, paragraphKey, marks, rangesByParagraph) + "</p>";
+    }).join("");
+    const oldNotes = Object.keys(notes).filter(function (noteKey) {
+      return noteKey.startsWith(key + ":") && noteKey !== chapterNoteKey && String(notes[noteKey] || "").trim();
+    }).map(function (noteKey) {
+      const noteIndex = noteKey.slice((key + ":").length);
+      return '<div class="saved-reader-note"><p>' + escapeHtml(notes[noteKey]) + '</p><button class="paragraph-action" type="button" data-action="add-note" data-index="' +
+        escapeHtml(noteIndex) + '">Edit note</button>' +
+        (openNotes[noteKey] ? '<textarea id="note-' + escapeHtml(noteIndex) +
+          '" data-note-index="' + escapeHtml(noteIndex) + '">' + escapeHtml(notes[noteKey]) + "</textarea>" : "") +
+        "</div>";
+    }).join("");
     const toc = chapters.map(function (item, chapterIndex) {
       return '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(item.slug)) +
         '" class="contents-popover-link ' + (item.slug === chapter.slug ? "current" : "") + '"><span>' +
         String(chapterIndex + 1).padStart(2, "0") + "</span>" + escapeHtml(item.title) + "</a>";
     }).join("");
-    const previousPage = pageIndex > 0
-      ? '<button class="chapter-pager previous" type="button" data-action="reader-page" data-page="' +
-        (pageIndex - 1) + '">' + icon("arrowLeft", 16) + '<span><small>PREVIOUS PAGE</small>Page ' +
-        pageIndex + "</span></button>"
-      : previous
-        ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(previous.slug)) +
-          '" class="chapter-pager previous">' + icon("arrowLeft", 16) + '<span><small>PREVIOUS CHAPTER</small>' +
-          escapeHtml(previous.title) + "</span></a>"
-        : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
-          '" class="chapter-pager previous">' + icon("arrowLeft", 16) + "<span><small>BACK TO BOOK</small>Contents</span></a>";
-    const nextPage = pageIndex < pageCount - 1
-      ? '<button class="chapter-pager next" type="button" data-action="reader-page" data-page="' +
-        (pageIndex + 1) + '"><span><small>NEXT PAGE</small>Page ' + (pageIndex + 2) +
-        "</span>" + icon("arrowRight", 16) + "</button>"
-      : next
-        ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(next.slug)) +
-          '" class="chapter-pager next"><span><small>UP NEXT</small>' + escapeHtml(next.title) +
-          "</span>" + icon("arrowRight", 16) + "</a>"
-        : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
-          '" class="chapter-pager next"><span><small>THAT’S A WRAP</small>Return to the book</span>' +
-          icon("check", 16) + "</a>";
+    const previousChapter = previous
+      ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(previous.slug)) +
+        '" class="chapter-pager previous">' + icon("arrowLeft", 16) + '<span><small>PREVIOUS CHAPTER</small>' +
+        escapeHtml(previous.title) + "</span></a>"
+      : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
+        '" class="chapter-pager previous">' + icon("arrowLeft", 16) + "<span><small>BACK TO BOOK</small>Contents</span></a>";
+    const nextChapter = next
+      ? '<a href="' + hashLink("read/" + encodeURIComponent(book.slug) + "/" + encodeURIComponent(next.slug)) +
+        '" class="chapter-pager next"><span><small>NEXT CHAPTER</small>' + escapeHtml(next.title) +
+        "</span>" + icon("arrowRight", 16) + "</a>"
+      : '<a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
+        '" class="chapter-pager next"><span><small>THAT’S A WRAP</small>Return to the book</span>' +
+        icon("check", 16) + "</a>";
+    const chapterNote = Object.prototype.hasOwnProperty.call(notes, chapterNoteKey);
 
-    return '<div class="reader-shell reader-' + escapeHtml(theme) + '" data-reader-key="' + escapeHtml(key) +
-      '" data-page-index="' + pageIndex + '" data-page-count="' + pageCount + '">' +
+    return '<div class="reader-shell reader-' + escapeHtml(theme) + '" data-reader-key="' + escapeHtml(key) + '">' +
       '<header class="reader-header"><a href="' + hashLink("book/" + encodeURIComponent(book.slug)) +
       '" class="reader-back">' + icon("arrowLeft", 16) + "<span>Book details</span></a>" +
       '<div class="reader-book-label">' + icon("book", 15) + "<span>" + escapeHtml(book.title) +
@@ -673,30 +686,27 @@
       icon("minus", 17) + '</button><span class="font-size-label" id="font-size-label">' + fontSize +
       '</span><button class="reader-tool" type="button" data-action="font-up" aria-label="Increase text size">' +
       icon("plus", 17) + '</button><button class="reader-tool theme-tool" type="button" data-action="theme" aria-label="Reader theme: ' +
-      themeName + '">' + icon(theme === "night" || theme === "dark" ? "sun" : "moon", 17) + '<span>' + themeName +
-      '</span>' + icon("chevron", 13) + '</button></div></header>' +
+      themeLabels[theme] + '">' + icon(theme === "night" || theme === "dark" ? "sun" : "moon", 17) +
+      '<span>' + themeLabels[theme] + '</span>' + icon("chevron", 13) + '</button></div></header>' +
       '<div class="contents-popover hidden" id="contents-popover"><div class="contents-popover-head"><strong>In this book</strong>' +
       '<button type="button" data-action="close-contents" aria-label="Close contents">' + icon("close", 16) +
       "</button></div>" + toc + '</div><div class="reading-progress-top"><span id="reading-progress" style="width:' +
-      (progress[key] || 0) + '%"></span></div><main class="reader-content"><section class="reader-page">' +
-      '<div class="reader-page-heading"><div class="reader-kicker"><span>CHAPTER ' +
-      String(index + 1).padStart(2, "0") + '</span><span class="kicker-rule"></span><span>' +
-      escapeHtml(book.category.toUpperCase()) + '</span><span class="reader-page-count">PAGE ' +
-      (pageIndex + 1) + ' / ' + pageCount + '</span></div><h1 class="reader-title serif">' +
-      escapeHtml(chapter.title) + '<span>.</span></h1><div class="reader-byline"><span>A page from <i>' +
-      escapeHtml(book.title) + '</i></span><span>' + icon("clock", 13) + " " +
-      Number(book.readingMinutes || 1) + ' min read</span></div></div>' +
-      '<div class="reader-prose" id="reader-prose" style="font-size:' + fontSize + 'px"><p data-paragraph="' +
-      pageIndex + '">' + paragraphHtml + '</p></div>' +
-      '<section class="page-notes"><div class="page-notes-heading"><div><strong>Notes for this page</strong>' +
-      '<span>Saved on this device</span></div>' + (!noteExists || !noteOpen
-        ? '<button class="paragraph-action" type="button" data-action="add-note" data-index="' + pageIndex +
-          '">' + icon("note", 15) + '<span>' + (noteExists ? "Edit note" : "Add a note") + '</span></button>'
-        : "") + '</div>' +
-      (noteExists && noteOpen ? '<textarea id="note-' + pageIndex + '" data-note-index="' + pageIndex +
-        '" placeholder="Keep a thought here…">' + escapeHtml(notes[paragraphKey]) + '</textarea>' : "") +
-      '</section><div class="reader-page-bottom"><nav class="chapter-pagination" aria-label="Page navigation">' +
-      previousPage + nextPage + '</nav></div></section></main><div class="reader-footer"><a href="#/" data-action="home">' +
+      (progress[key] || 0) + '%"></span></div><main class="reader-content"><article class="reader-chapter">' +
+      '<div class="reader-kicker"><span>CHAPTER ' + String(index + 1).padStart(2, "0") +
+      '</span><span class="kicker-rule"></span><span>' + escapeHtml(book.category.toUpperCase()) +
+      '</span></div><h1 class="reader-title serif">' + escapeHtml(chapter.title) +
+      '<span>.</span></h1><div class="reader-byline"><span>A page from <i>' + escapeHtml(book.title) +
+      '</i></span><span>' + icon("clock", 13) + " " + Number(book.readingMinutes || 1) +
+      ' min read</span></div><div class="reader-prose" id="reader-prose" style="font-size:' + fontSize +
+      'px">' + paragraphs + '</div><section class="page-notes"><div class="page-notes-heading"><div>' +
+      '<strong>Notes for this chapter</strong><span>Saved on this device</span></div>' +
+      (!chapterNote || !chapterNoteOpen ? '<button class="paragraph-action" type="button" data-action="add-note" data-index="chapter">' +
+        icon("note", 15) + '<span>' + (chapterNote ? "Edit note" : "Add a note") + '</span></button>' : "") +
+      '</div>' + (chapterNote && chapterNoteOpen
+        ? '<textarea id="note-chapter" data-note-index="chapter" placeholder="Keep a thought here…">' +
+          escapeHtml(notes[chapterNoteKey]) + '</textarea>' : "") + oldNotes +
+      '</section><nav class="chapter-pagination" aria-label="Chapter navigation">' +
+      previousChapter + nextChapter + '</nav></article></main><div class="reader-footer"><a href="#/" data-action="home">' +
       icon("leaf", 15) + " Eden Publications</a><span>Your reading place is saved on this device.</span></div></div>";
   }
 
@@ -752,9 +762,9 @@
     const shell = document.querySelector(".reader-shell");
     if (!shell) return;
     const key = shell.dataset.readerKey;
-    const pageIndex = Number(shell.dataset.pageIndex);
-    const pageCount = Number(shell.dataset.pageCount);
-    const percent = Math.round(((pageIndex + 1) / pageCount) * 100);
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    const percent = maxScroll <= 0 ? 100 :
+      Math.min(100, Math.round((window.scrollY / maxScroll) * 100));
     const progress = store.read("progress", {});
     const value = Math.max(progress[key] || 0, percent);
     if (value !== progress[key]) {
@@ -860,13 +870,6 @@
           button.setAttribute("aria-label", "Reader theme: " + labels[nextTheme]);
         }
       }
-    } else if (action === "reader-page") {
-      const shell = document.querySelector(".reader-shell");
-      if (!shell) return;
-      const pageMap = store.read("reader-pages", {});
-      pageMap[shell.dataset.readerKey] = Number(control.dataset.page);
-      store.write("reader-pages", pageMap);
-      render();
     } else if (action === "bookmark-chapter") {
       const shell = document.querySelector(".reader-shell");
       if (!shell) return;
@@ -877,7 +880,7 @@
         : bookmarks.concat(key));
       render({ preserveScroll: true });
     } else if (action === "add-note") {
-      const index = Number(control.dataset.index);
+      const index = control.dataset.index;
       const shell = document.querySelector(".reader-shell");
       if (!shell) return;
       const key = shell.dataset.readerKey + ":" + index;
@@ -972,7 +975,7 @@
       state.query = event.target.value;
       updateCatalogResults();
     } else if (event.target.matches("[data-note-index]")) {
-      saveNote(Number(event.target.dataset.noteIndex), event.target.value);
+      saveNote(event.target.dataset.noteIndex, event.target.value);
     }
   });
 
@@ -1099,21 +1102,19 @@
         return;
       }
       const slug = value("slug");
-      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-        if (message) message.textContent = "Use a book ID with lowercase letters or numbers separated by single hyphens.";
+      const title = value("title") || file.name.replace(/\.[^.]+$/, "").replace(/[-_]+/g, " ").trim();
+      const effectiveSlug = slug || title.toLowerCase().normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+      if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(effectiveSlug)) {
+        if (message) message.textContent = "Add a title or book ID using lowercase letters and numbers separated by single hyphens.";
         return;
       }
-      const requiredFields = ["title", "subtitle", "author", "category", "description", "coverMotif", "coverEyebrow"];
-      if (requiredFields.some(function (name) { return !value(name); })) {
-        if (message) message.textContent = "Fill in each required book detail before preparing the files.";
-        return;
-      }
-      if (books.some(function (book) { return book.slug === slug; }) || removedBookSlugs.includes(slug)) {
+      if (books.some(function (book) { return book.slug === effectiveSlug; }) || removedBookSlugs.includes(effectiveSlug)) {
         if (message) message.textContent = "That book ID is already published or has been removed. Choose a different ID.";
         return;
       }
-      const readingMinutes = Number(value("readingMinutes"));
-      const inactiveMinutes = Number(value("inactiveMinutes"));
+      const readingMinutes = value("readingMinutes") ? Number(value("readingMinutes")) : 20;
+      const inactiveMinutes = value("inactiveMinutes") ? Number(value("inactiveMinutes")) : 30;
       if (!Number.isInteger(readingMinutes) || readingMinutes < 1 || readingMinutes > 10000 ||
         !Number.isInteger(inactiveMinutes) || inactiveMinutes < 1 || inactiveMinutes > 10080) {
         if (message) message.textContent = "Enter valid reading time and access timeout values.";
@@ -1124,18 +1125,18 @@
           return token && list.findIndex(function (item) { return item.toLowerCase() === token.toLowerCase(); }) === index;
         });
       const book = {
-        slug: slug,
+          slug: effectiveSlug,
         isDemo: false,
-        title: value("title"),
+          title: title,
         subtitle: value("subtitle"),
-        author: value("author"),
-        category: value("category"),
+          author: value("author") || "Eden Publications",
+          category: value("category") || "Uncategorized",
         description: value("description"),
         cover: {
           background: "linear-gradient(150deg, " + value("coverColorStart") + " 0%, " + value("coverColorEnd") + " 100%)",
           ink: value("coverInk"),
           eyebrow: value("coverEyebrow"),
-          motif: value("coverMotif"),
+          motif: value("coverMotif") || title,
           image: adminCoverImage
         },
         readingMinutes: readingMinutes,
