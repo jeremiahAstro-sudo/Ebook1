@@ -2,4 +2,4 @@
 layout: null
 permalink: /catalog-index.json
 ---
-{"books":[{% assign first_book = true %}{% for book_file in site.static_files %}{% if book_file.path contains '/catalog/' and book_file.extname == '.json' %}{% unless first_book %},{% endunless %}{{ book_file.name | jsonify }}{% assign first_book = false %}{% endif %}{% endfor %}]}
+{"books":[{% assign first_book = true %}{% for book_file in site.static_files %}{% if book_file.path contains '/catalog/' and book_file.extname == '.json' %}{% unless first_book %},{% endunless %}{{ book_file.name | remove: '.json' | jsonify }}{% assign first_book = false %}{% endif %}{% endfor %}]}

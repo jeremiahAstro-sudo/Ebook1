@@ -4,9 +4,9 @@ This is a static site deployed to GitHub Pages by GitHub Actions. The build gene
 
 ## Add a book
 
-Open **Admin**, unlock the publishing workspace, and import a `.docx` file with each chapter title formatted as **Heading 1**. Fill in the catalog details and either design a text-and-color cover or upload a PNG, JPEG, or WebP cover image (up to 1 MB). The image is embedded in the exported book JSON. Select **Prepare book file**, then download the result.
+Open **Admin**, unlock the publishing workspace, and upload the original `.pdf` file. The PDF is not converted or edited; the reader embeds the source file so its pages, images, fonts, colors, and layout remain intact. Fill in the catalog details and either design a text-and-color cover or upload a PNG, JPEG, or WebP cover image (up to 1 MB). Select **Prepare book file**, then download both the JSON metadata and the PDF.
 
-Each book lives in its own JSON file in `catalog/`, named to match its slug (for example, `the-gentle-table.json`). To publish a book, add the file to `catalog/`, creating the folder first if it is absent, then commit and push. GitHub Actions rebuilds the site and deploys the new catalog. If the last catalog file is deleted, Git removes the now-empty folder; the build treats the missing folder as an empty catalog.
+Each book has its own folder under `catalog/`, named to match its slug (for example, `catalog/the-gentle-table/`). Put the matching JSON metadata and PDF files in that folder (`the-gentle-table.json` and `the-gentle-table.pdf`), then commit and push. GitHub Actions rebuilds the site and deploys the new catalog. If there are no book folders, the build treats the catalog as empty.
 
 ## Remove a book
 
@@ -16,9 +16,9 @@ This is a static website, so a browser-only removal cannot update what other vis
 
 ## Reader
 
-Each chapter is displayed as continuous, scrollable text; use the chapter controls at the end to move between chapters. The reader includes Paper, Warm, Night, Light (white), and Dark (black) themes. Turn on **Highlight** in the top ribbon, then select text to mark it; use **Add a note** at the bottom of the chapter to keep a device-local note. During DOCX import, a section headed **Contents** or **Table of Contents** at Heading 1 level and its entries are omitted from the chapter list.
+The catalog opens directly to the book details; the generated chapter list has been removed. **Open book** displays the original PDF in the browser’s built-in PDF viewer, which provides page navigation without changing the document.
 
-Reader progress, highlights, notes, and saved books are stored in that browser and do not sync between devices.
+Saved books are stored in that browser and do not sync between devices.
 
 ## GitHub Pages setup
 
@@ -28,4 +28,4 @@ In the repository settings, open **Pages** and set the build and deployment sour
 
 The admin password check is implemented in browser JavaScript using a salted password verifier. This can deter casual access, but it is **not secure authentication**: visitors can inspect or modify client-side code, and a verifier can be attacked offline. The published books and access tokens are also publicly downloadable, and browser-based book-access checks can be bypassed. Do not use this site to protect confidential content or sensitive credentials.
 
-Word files are parsed in the browser using Mammoth.js from jsDelivr, so importing a `.docx` requires an internet connection.
+The PDF is stored as a separate file from its JSON metadata so larger books do not need to be embedded in the catalog data.

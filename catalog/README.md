@@ -1,5 +1,5 @@
 # Published book catalog
 
-Add each published book as a JSON file in this folder. The filename must match the book's `slug` (for example, `my-book.json` for `"slug": "my-book"`).
+Add each published book in its own subfolder named for its `slug` (for example, `my-book/`). Put `my-book.json` and `my-book.pdf` in that folder; the JSON file should use `"slug": "my-book"` and `"pdf": "my-book.pdf"`.
 
-The static-site build discovers JSON files in this folder. This README keeps the folder present when the catalog has no books.
+The static-site build discovers and validates each book folder. This README keeps the catalog folder present when there are no books.

@@ -1,1 +1,1 @@
-This folder is legacy; the reader does not load books from here. Current books are individual JSON files in the repository's `catalog/` folder. Use the Admin page to create a book JSON file, add it to that folder, and commit the new file.
+This folder is legacy; the reader does not load books from here. Current books use a folder in `catalog/` containing a JSON metadata file and a matching original PDF. Use Admin to prepare both files, put them in a new folder named for the book ID, and commit that folder.

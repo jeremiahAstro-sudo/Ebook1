@@ -12,25 +12,73 @@ if (catalogExists && !fs.statSync(catalogDirectory).isDirectory()) {
   throw new Error("catalog/ exists but is not a directory.");
 }
 
-const bookFiles = catalogExists
-  ? fs.readdirSync(catalogDirectory)
-    .filter(function (filename) { return filename.endsWith(".json"); })
-    .sort()
-  : [];
+const catalogEntries = catalogExists ? fs.readdirSync(catalogDirectory, { withFileTypes: true }) : [];
+const rootBookFiles = catalogEntries.filter(function (entry) {
+  return entry.isFile() && entry.name.endsWith(".json");
+});
+if (rootBookFiles.length) {
+  throw new Error("Move catalog JSON files into per-book folders named after their slug.");
+}
+
+const bookSlugs = catalogEntries
+  .filter(function (entry) { return entry.isDirectory(); })
+  .map(function (entry) { return entry.name; })
+  .sort();
+
+const bookFiles = bookSlugs.map(function (slug) {
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
+    throw new Error("Invalid book folder in catalog/: " + slug);
+  }
+  const filename = slug + ".json";
+  const directory = path.join(catalogDirectory, slug);
+  const filepath = path.join(directory, filename);
+  if (!fs.existsSync(filepath) || !fs.statSync(filepath).isFile()) {
+    throw new Error("catalog/" + slug + "/ must contain " + filename + ".");
+  }
+  const unexpectedFiles = fs.readdirSync(directory).filter(function (name) {
+    return name !== filename && name !== slug + ".pdf";
+  });
+  if (unexpectedFiles.length) {
+    throw new Error("catalog/" + slug + "/ may contain only " + filename + " and " + slug + ".pdf.");
+  }
+  return { slug: slug, filename: filename, directory: directory, filepath: filepath };
+});
 
 const seenSlugs = new Set();
-bookFiles.forEach(function (filename) {
-  const slug = filename.slice(0, -".json".length);
-  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug)) {
-    throw new Error("Invalid book filename in catalog/: " + filename);
-  }
-  const book = JSON.parse(fs.readFileSync(path.join(catalogDirectory, filename), "utf8"));
-  if (!book || typeof book !== "object" || Array.isArray(book) ||
-    book.slug !== slug || !Array.isArray(book.chapters)) {
-    throw new Error(filename + " must contain a book with a matching slug and chapters array.");
+const pdfFiles = [];
+bookFiles.forEach(function (entry) {
+  const slug = entry.slug;
+  const filename = entry.filename;
+  const book = JSON.parse(fs.readFileSync(entry.filepath, "utf8"));
+  if (!book || typeof book !== "object" || Array.isArray(book) || book.slug !== slug) {
+    throw new Error("catalog/" + slug + "/" + filename + " must contain a book with a matching slug.");
   }
   if (seenSlugs.has(slug)) throw new Error("Duplicate book slug: " + slug);
   seenSlugs.add(slug);
+  const expectedPdfPath = path.join(entry.directory, slug + ".pdf");
+  if (book.pdf === undefined && fs.existsSync(expectedPdfPath)) {
+    throw new Error(filename + " must reference " + slug + ".pdf in its pdf field.");
+  }
+  if (book.pdf !== undefined) {
+    if (book.pdf !== slug + ".pdf") {
+      throw new Error(filename + " must reference " + slug + ".pdf in its pdf field.");
+    }
+    const pdfPath = path.join(entry.directory, book.pdf);
+    if (!fs.existsSync(pdfPath) || !fs.statSync(pdfPath).isFile()) {
+      throw new Error(filename + " references a missing catalog/" + slug + "/" + book.pdf + ".");
+    }
+    const signature = Buffer.alloc(5);
+    const pdf = fs.openSync(pdfPath, "r");
+    try {
+      if (fs.readSync(pdf, signature, 0, signature.length, 0) !== signature.length ||
+        signature.toString("ascii") !== "%PDF-") {
+        throw new Error("catalog/" + slug + "/" + book.pdf + " does not have a valid PDF header.");
+      }
+    } finally {
+      fs.closeSync(pdf);
+    }
+    pdfFiles.push({ slug: slug, filename: book.pdf, path: pdfPath });
+  }
 });
 
 fs.rmSync(outputDirectory, { recursive: true, force: true });
@@ -40,12 +88,17 @@ siteFiles.forEach(function (filename) {
 });
 const outputCatalogDirectory = path.join(outputDirectory, "catalog");
 fs.mkdirSync(outputCatalogDirectory, { recursive: true });
-bookFiles.forEach(function (filename) {
-  fs.copyFileSync(path.join(catalogDirectory, filename), path.join(outputCatalogDirectory, filename));
+bookFiles.forEach(function (book) {
+  const outputBookDirectory = path.join(outputCatalogDirectory, book.slug);
+  fs.mkdirSync(outputBookDirectory, { recursive: true });
+  fs.copyFileSync(book.filepath, path.join(outputBookDirectory, book.filename));
+});
+pdfFiles.forEach(function (book) {
+  fs.copyFileSync(book.path, path.join(outputCatalogDirectory, book.slug, book.filename));
 });
 fs.writeFileSync(
   path.join(outputDirectory, "catalog-index.json"),
-  JSON.stringify({ books: bookFiles }, null, 2) + "\n"
+  JSON.stringify({ books: bookSlugs }, null, 2) + "\n"
 );
 
-console.log("Built static site with " + bookFiles.length + " book(s) in _site/.");
+console.log("Built static site with " + bookSlugs.length + " book(s) in _site/.");
