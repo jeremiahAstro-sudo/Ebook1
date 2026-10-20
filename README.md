@@ -16,7 +16,7 @@ This is a static website, so a browser-only removal cannot update what other vis
 
 ## Reader
 
-The catalog opens directly to the book details; the generated chapter list has been removed. **Open book** displays the original PDF in the browser’s built-in PDF viewer, which provides page navigation without changing the document.
+The catalog opens directly to the book details; the generated chapter list has been removed. **Open book** displays the original PDF in a custom PDF.js reader with page navigation, page selection, zoom, and fit-to-width controls. PDF.js renders the original pages without changing their layout. Loading the reader requires an internet connection to load PDF.js from cdnjs.
 
 Saved books are stored in that browser and do not sync between devices.
 

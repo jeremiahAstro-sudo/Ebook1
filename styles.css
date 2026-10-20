@@ -380,10 +380,20 @@ svg { flex: none; vertical-align: middle; }
 .reader-light .contents-popover-head button,
 .reader-light .contents-popover-link span { color: #000; }
 .pdf-reader-shell { height: 100vh; min-height: 420px; display: flex; flex-direction: column; background: #e6e6e6; }
-.pdf-reader-shell .reader-header { position: relative; flex: none; grid-template-columns: 1fr minmax(0, 2fr) 1fr; }
+.pdf-reader-shell .reader-header { position: relative; flex: none; grid-template-columns: minmax(130px, 1fr) minmax(0, 1fr) auto; gap: 15px; }
 .pdf-reader-shell .reader-book-label { min-width: 0; }
 .pdf-reader-shell .reader-book-label strong { max-width: 100%; }
-.pdf-viewer { display: block; width: 100%; flex: 1; min-height: 0; border: 0; background: #e6e6e6; }
+.pdf-controls { display: flex; align-items: center; justify-content: flex-end; gap: 5px; color: #536858; white-space: nowrap; }
+.pdf-controls button { min-height: 30px; padding: 0 8px; border: 1px solid #d7d8cd; border-radius: 3px; background: #f8f6ee; color: #425a49; font: inherit; font-size: 10px; }
+.pdf-controls button:hover:not(:disabled) { background: #e9eddf; }
+.pdf-controls button:disabled { opacity: .45; }
+.pdf-controls label { display: flex; align-items: center; gap: 5px; font-size: 10px; }
+.pdf-controls input { width: 43px; height: 28px; padding: 0 4px; border: 1px solid #d7d8cd; background: #fff; color: #354a3c; font: inherit; text-align: center; }
+.pdf-control-divider { width: 1px; height: 22px; margin: 0 4px; background: #d7d8cd; }
+.pdf-viewer { display: block; width: 100%; flex: 1; min-height: 0; overflow: auto; border: 0; background: #dededb; overscroll-behavior: contain; }
+.pdf-page { display: flex; width: max-content; max-width: none; margin: 20px auto; overflow: hidden; background: #fff; box-shadow: 0 2px 12px rgb(0 0 0 / 20%); }
+.pdf-page canvas { display: block; max-width: none; }
+.pdf-status { margin: 36px auto; padding: 0 20px; color: #59675d; font-size: 12px; text-align: center; }
 
 /* Static publishing workspace */
 .admin-main { max-width: 1124px; margin: auto; padding: 35px 0 80px; }
@@ -543,10 +553,14 @@ svg { flex: none; vertical-align: middle; }
   .reader-header { height: 58px; grid-template-columns: 1fr auto; padding: 0 13px; }
   .reader-back { gap: 4px; font-size: 9px; }
   .reader-book-label { display: none; }
-  .pdf-reader-shell .reader-header { grid-template-columns: auto minmax(0, 1fr) auto; gap: 8px; }
-  .pdf-reader-shell .reader-book-label { display: flex; overflow: hidden; font-size: 9px; }
+  .pdf-reader-shell .reader-header { height: auto; min-height: 58px; grid-template-columns: minmax(0, 1fr) auto; gap: 5px; padding: 6px 9px; }
+  .pdf-reader-shell .reader-book-label { display: none; }
   .pdf-reader-shell .reader-book-label strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .pdf-reader-shell .reader-header .button-secondary { min-height: 34px; padding: 0 8px; font-size: 9px; }
+  .pdf-controls { gap: 3px; }
+  .pdf-controls button { min-height: 29px; padding: 0 6px; font-size: 9px; }
+  .pdf-controls label { gap: 3px; font-size: 9px; }
+  .pdf-controls input { width: 36px; height: 27px; }
+  .pdf-control-divider { margin: 0 2px; }
   .reader-tools { gap: 0; }
   .reader-tool { min-width: 29px; padding: 0 5px; }
   .reader-tool span, .reader-tool .lucide-chevron-down { display: none; }

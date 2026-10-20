@@ -9,6 +9,7 @@
   let coverImageLoadId = 0;
   let removedBookSlugs = [];
   let adminStatus = "";
+  let pdfReaderController = null;
   const ADMIN_PASSWORD_SALT = "2d467fd52422102e4358c7a85d28b7f5";
   const ADMIN_PASSWORD_HASH = "f00956aa31840a1bee406403e51f2aa3d6e64eac4b6b6d1928fce84805528d6d";
   const ADMIN_PASSWORD_ITERATIONS = 210000;
@@ -507,14 +508,213 @@
         '<p>Add the original PDF to this book’s catalog entry to read it here.</p><a href="' +
         hashLink("book/" + encodeURIComponent(book.slug)) + '" class="button-primary">Back to book details</a></main>' + footer() + '</div>';
     }
-    const pdfUrl = "./catalog/" + encodeURIComponent(book.pdf) + "#view=FitH&page=1";
+    const pdfUrl = "./catalog/" + encodeURIComponent(book.pdf);
     return '<div class="pdf-reader-shell"><header class="reader-header"><a href="' +
       hashLink("book/" + encodeURIComponent(book.slug)) + '" class="reader-back">' +
       icon("arrowLeft", 16) + "<span>Book details</span></a>" +
       '<div class="reader-book-label">' + icon("book", 15) + "<strong>" + escapeHtml(book.title) + "</strong></div>" +
-      '<a class="button-secondary" href="' + pdfUrl + '" target="_blank" rel="noopener">Open PDF separately</a></header>' +
-      '<iframe class="pdf-viewer" title="' + escapeHtml(book.title) +
-      ' — original PDF" src="' + pdfUrl + '"></iframe></div>';
+      '<div class="pdf-controls" aria-label="PDF controls"><button type="button" data-pdf-action="previous" aria-label="Previous page">Previous</button>' +
+      '<label>Page <input type="number" data-pdf-page min="1" value="1" aria-label="Current page"> <span data-pdf-total>of …</span></label>' +
+      '<button type="button" data-pdf-action="next" aria-label="Next page">Next</button><span class="pdf-control-divider"></span>' +
+      '<button type="button" data-pdf-action="zoom-out" aria-label="Zoom out">−</button><button type="button" data-pdf-action="fit">Fit width</button>' +
+      '<button type="button" data-pdf-action="zoom-in" aria-label="Zoom in">+</button></div></header>' +
+      '<main class="pdf-viewer" data-pdf-url="' + escapeHtml(pdfUrl) + '" aria-label="PDF pages">' +
+      '<p class="pdf-status" role="status">Loading PDF…</p></main></div>';
+  }
+
+  function initializePdfReader() {
+    if (pdfReaderController) pdfReaderController.abort();
+    const viewer = document.querySelector(".pdf-viewer");
+    if (!viewer) return;
+    if (!window.pdfjsLib) {
+      viewer.innerHTML = '<p class="pdf-status" role="alert">The PDF viewer could not load. Check your internet connection and refresh the page.</p>';
+      return;
+    }
+    const pageInput = document.querySelector("[data-pdf-page]");
+    const totalLabel = document.querySelector("[data-pdf-total]");
+    const controls = document.querySelector(".pdf-controls");
+    pdfReaderController = new AbortController();
+    const listenerOptions = { signal: pdfReaderController.signal };
+    const url = viewer.dataset.pdfUrl;
+    let pdfDocument;
+    let zoom = 1;
+    let currentPage = 1;
+    const pageSlots = [];
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+    function updatePageControls(page) {
+      currentPage = Math.max(1, Math.min(pdfDocument.numPages, page));
+      pageInput.value = String(currentPage);
+      const previous = controls.querySelector('[data-pdf-action="previous"]');
+      const next = controls.querySelector('[data-pdf-action="next"]');
+      previous.disabled = currentPage <= 1;
+      next.disabled = currentPage >= pdfDocument.numPages;
+    }
+
+    function scaleFor(slot) {
+      const width = viewer.clientWidth - 32;
+      return Math.max(0.1, width / slot.pageWidth) * zoom;
+    }
+
+    function updateSlotSize(slot) {
+      const scale = scaleFor(slot);
+      slot.element.style.aspectRatio = slot.pageWidth + " / " + slot.pageHeight;
+      slot.canvas.style.width = (slot.pageWidth * scale) + "px";
+      slot.canvas.style.height = (slot.pageHeight * scale) + "px";
+    }
+
+    async function renderPage(slot) {
+      const scale = scaleFor(slot);
+      if (slot.renderedScale === scale || slot.renderingScale === scale) return;
+      if (slot.renderTask) slot.renderTask.cancel();
+      slot.renderingScale = scale;
+      let renderTask;
+      try {
+        const page = await pdfDocument.getPage(slot.number);
+        if (!viewer.isConnected || slot.renderingScale !== scale) return;
+        const viewport = page.getViewport({ scale: scale });
+        const outputScale = Math.min(window.devicePixelRatio || 1, 2);
+        const context = slot.canvas.getContext("2d", { alpha: false });
+        slot.canvas.width = Math.floor(viewport.width * outputScale);
+        slot.canvas.height = Math.floor(viewport.height * outputScale);
+        slot.canvas.style.width = viewport.width + "px";
+        slot.canvas.style.height = viewport.height + "px";
+        renderTask = page.render({
+          canvasContext: context,
+          viewport: viewport,
+          transform: outputScale === 1 ? null : [outputScale, 0, 0, outputScale, 0, 0]
+        });
+        slot.renderTask = renderTask;
+        await renderTask.promise;
+        if (slot.renderingScale === scale) {
+          slot.renderedScale = scale;
+          slot.element.classList.add("pdf-page-ready");
+        }
+      } catch (error) {
+        if (slot.renderTask === renderTask) slot.renderTask = null;
+        if (error.name !== "RenderingCancelledException" && slot.renderingScale === scale) {
+          viewer.innerHTML = '<p class="pdf-status" role="alert">A PDF page could not be rendered: ' +
+            escapeHtml(error.message) + "</p>";
+        }
+      } finally {
+        if (slot.renderTask === renderTask) slot.renderTask = null;
+      }
+    }
+
+    function visiblePage() {
+      let nearest = pageSlots[0];
+      let distance = Infinity;
+      pageSlots.forEach(function (slot) {
+        const rect = slot.element.getBoundingClientRect();
+        const nextDistance = Math.abs(rect.top);
+        if (rect.bottom > 0 && rect.top < window.innerHeight && nextDistance < distance) {
+          nearest = slot;
+          distance = nextDistance;
+        }
+      });
+      if (nearest) updatePageControls(nearest.number);
+    }
+
+    function renderVisiblePages() {
+      pageSlots.forEach(updateSlotSize);
+      pageSlots.forEach(function (slot) {
+        const rect = slot.element.getBoundingClientRect();
+        if (rect.bottom >= -window.innerHeight && rect.top <= window.innerHeight * 2) {
+          if (slot.renderedScale !== scaleFor(slot)) slot.element.classList.remove("pdf-page-ready");
+          renderPage(slot);
+        }
+      });
+    }
+
+    const loadingTask = window.pdfjsLib.getDocument(url);
+    pdfReaderController.signal.addEventListener("abort", function () {
+      pageSlots.forEach(function (slot) {
+        if (slot.renderTask) slot.renderTask.cancel();
+      });
+      loadingTask.destroy().catch(function (error) {
+        console.error("Could not stop the previous PDF load.", error);
+      });
+    }, { once: true });
+    loadingTask.promise.then(function (document) {
+      if (!viewer.isConnected) return;
+      pdfDocument = document;
+      viewer.innerHTML = "";
+      pageInput.max = String(pdfDocument.numPages);
+      totalLabel.textContent = "of " + pdfDocument.numPages;
+      const fragment = window.document.createDocumentFragment();
+      const createPages = async function () {
+        const pages = await Promise.all(Array.from({ length: pdfDocument.numPages }, function (_, index) {
+          return pdfDocument.getPage(index + 1);
+        }));
+        for (let number = 1; number <= pdfDocument.numPages; number++) {
+          const viewport = pages[number - 1].getViewport({ scale: 1 });
+          const element = window.document.createElement("section");
+          element.className = "pdf-page";
+          element.dataset.page = String(number);
+          const canvas = window.document.createElement("canvas");
+          canvas.setAttribute("aria-label", "Page " + number);
+          element.appendChild(canvas);
+          const slot = {
+            number: number,
+            element: element,
+            canvas: canvas,
+            pageWidth: viewport.width,
+            pageHeight: viewport.height
+          };
+          pageSlots.push(slot);
+          fragment.appendChild(element);
+        }
+        viewer.appendChild(fragment);
+        updateSlotSize(pageSlots[0]);
+        updatePageControls(1);
+        renderVisiblePages();
+      };
+      createPages().catch(function (error) {
+        viewer.innerHTML = '<p class="pdf-status" role="alert">The PDF pages could not be prepared: ' +
+          escapeHtml(error.message) + "</p>";
+      });
+    }).catch(function (error) {
+      if (viewer.isConnected) {
+        viewer.innerHTML = '<p class="pdf-status" role="alert">The PDF could not be loaded: ' +
+          escapeHtml(error.message) + "</p>";
+      }
+    });
+
+    controls.addEventListener("click", function (event) {
+      const button = event.target.closest("[data-pdf-action]");
+      if (!button || !pdfDocument) return;
+      const action = button.dataset.pdfAction;
+      if (action === "previous" || action === "next") {
+        const targetPage = currentPage + (action === "previous" ? -1 : 1);
+        const slot = pageSlots[targetPage - 1];
+        if (slot) {
+          slot.element.scrollIntoView({ behavior: "smooth", block: "start" });
+          updatePageControls(targetPage);
+        }
+      } else if (action === "zoom-in" || action === "zoom-out") {
+        zoom = Math.max(0.5, Math.min(3, zoom + (action === "zoom-in" ? 0.2 : -0.2)));
+        renderVisiblePages();
+      } else if (action === "fit") {
+        zoom = 1;
+        renderVisiblePages();
+      }
+    }, listenerOptions);
+    pageInput.addEventListener("change", function () {
+      if (!pdfDocument) return;
+      const requestedPage = Number(pageInput.value);
+      if (!Number.isInteger(requestedPage) || requestedPage < 1 || requestedPage > pdfDocument.numPages) {
+        pageInput.value = String(currentPage);
+        return;
+      }
+      pageSlots[requestedPage - 1].element.scrollIntoView({ behavior: "smooth", block: "start" });
+      updatePageControls(requestedPage);
+    }, listenerOptions);
+    viewer.addEventListener("scroll", function () {
+      visiblePage();
+      renderVisiblePages();
+    }, { passive: true, signal: pdfReaderController.signal });
+    window.addEventListener("resize", renderVisiblePages, { passive: true, signal: pdfReaderController.signal });
   }
 
   function render(options) {
@@ -540,6 +740,7 @@
       else content = notFound();
     }
     app.innerHTML = content;
+    initializePdfReader();
     if (!(options && options.preserveScroll)) window.scrollTo(0, 0);
     if (route() === "/" && window.location.hash.slice(1) && !window.location.hash.slice(1).startsWith("/")) {
       const anchor = document.getElementById(window.location.hash.slice(1));
