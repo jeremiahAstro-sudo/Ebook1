@@ -1,1 +1,1 @@
-This folder is legacy; the reader does not load books from here. Current books use a folder in `catalog/` containing a JSON metadata file and a matching original PDF. Use Admin to prepare both files, put them in a new folder named for the book ID, and commit that folder.
+This folder is legacy; the reader does not load books from here. Current books use matching JSON metadata and PDF files directly in `catalog/`. Use Admin to prepare both files, upload them together to `catalog/`, and commit them.

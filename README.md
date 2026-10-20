@@ -4,9 +4,9 @@ This is a static site deployed to GitHub Pages by GitHub Actions. The build gene
 
 ## Add a book
 
-Open **Admin**, unlock the publishing workspace, and upload the original `.pdf` file. The PDF is not converted or edited; the reader embeds the source file so its pages, images, fonts, colors, and layout remain intact. Fill in the catalog details and either design a text-and-color cover or upload a PNG, JPEG, or WebP cover image (up to 1 MB). Select **Prepare book file**, then download both the JSON metadata and the PDF.
+Open **Admin**, unlock the publishing workspace, and upload the original `.pdf` file. The PDF is not converted or edited; the reader embeds the source file so its pages, images, fonts, colors, and layout remain intact. Fill in the catalog details and either design a text-and-color cover or upload a PNG, JPEG, or WebP cover image (up to 1 MB). An uploaded cover is displayed as-is, without titles, author names, colors, or other catalog details added over it. Select **Prepare book file**, then download both the JSON metadata and the PDF. Admin puts the chosen/generated book ID into the JSON `slug` and `pdf` fields and names both downloads to match, so you do not need to edit the JSON before uploading.
 
-Each book has its own folder under `catalog/`, named to match its slug (for example, `catalog/the-gentle-table/`). Put the matching JSON metadata and PDF files in that folder (`the-gentle-table.json` and `the-gentle-table.pdf`), then commit and push. GitHub Actions rebuilds the site and deploys the new catalog. If there are no book folders, the build treats the catalog as empty.
+For each book, upload two files directly into `catalog/`: `<book-id>.json` and `<book-id>.pdf` (for example, `the-gentle-table.json` and `the-gentle-table.pdf`). Use the same ID in the JSON `"slug"` field and its `"pdf"` field. You can upload both files together; no per-book folder is needed. Commit and push the files, and GitHub Actions will rebuild and deploy the catalog.
 
 ## Remove a book
 

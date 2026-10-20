@@ -145,7 +145,7 @@
     const index = await indexResponse.json();
     if (!index || !Array.isArray(index.books) ||
       index.books.some(function (slug) { return typeof slug !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(slug); })) {
-      throw new Error("catalog-index.json must contain a books array of book folder slugs.");
+      throw new Error("catalog-index.json must contain a books array of book IDs.");
     }
     const savedHiddenBooks = store.read("hidden-books", []);
     if (!Array.isArray(savedHiddenBooks) ||
@@ -155,17 +155,17 @@
     removedBookSlugs = savedHiddenBooks.slice();
     books = await Promise.all(index.books.map(async function (slug) {
       const filename = slug + ".json";
-      const bookPath = "./catalog/" + encodeURIComponent(slug) + "/" + encodeURIComponent(filename);
+      const bookPath = "./catalog/" + encodeURIComponent(filename);
       const response = await fetch(bookPath);
       if (!response.ok) throw new Error("Could not load " + bookPath + ".");
       const book = await response.json();
       if (!book || typeof book !== "object" || Array.isArray(book) ||
         book.slug !== slug || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(book.slug)) {
-        throw new Error("catalog/" + slug + "/" + filename + " must contain a book whose slug matches its folder.");
+        throw new Error("catalog/" + filename + " must contain a book whose slug matches its filename.");
       }
       if (book.pdf !== undefined &&
         book.pdf !== slug + ".pdf") {
-        throw new Error("catalog/" + slug + "/" + filename + " must reference " + slug + ".pdf in its pdf field.");
+        throw new Error("catalog/" + filename + " must reference " + slug + ".pdf in its pdf field.");
       }
       return book;
     }));
@@ -233,14 +233,15 @@
 
   function cover(book, size) {
     const coverData = book.cover || {};
-    const coverImage = typeof coverData.image === "string" &&
-      /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(coverData.image)
-      ? ';background-image:linear-gradient(0deg,rgb(0 0 0 / 38%),transparent 68%),url(&quot;' +
-        escapeHtml(coverData.image) + '&quot;);background-size:cover;background-position:center'
-      : "";
+    const hasUploadedCover = typeof coverData.image === "string" &&
+      /^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(coverData.image);
+    if (hasUploadedCover) {
+      return '<div class="cover-art cover-image cover-' + (size || "card") + '">' +
+        '<img src="' + escapeHtml(coverData.image) + '" alt="Cover of ' + escapeHtml(book.title) + '"></div>';
+    }
     return '<div class="cover-art cover-' + (size || "card") + '" style="background:' +
       escapeHtml(coverData.background || "linear-gradient(150deg,#d8e0bd,#79947d)") +
-      ';color:' + escapeHtml(coverData.ink || "#274b3b") + coverImage + '">' +
+      ';color:' + escapeHtml(coverData.ink || "#274b3b") + '">' +
       '<div class="cover-sprig" aria-hidden="true"><span></span><span></span><span></span></div>' +
       '<span class="cover-eyebrow">' + escapeHtml(coverData.eyebrow || "A SMALL GUIDE TO") + '</span>' +
       '<div class="cover-title serif">' + escapeHtml(coverData.motif || book.title) + '</div>' +
@@ -364,7 +365,7 @@
       '<section class="admin-panel"><div class="admin-section-heading"><span>02</span><div><h2 class="serif">Book details</h2><p>These details appear in the catalog and on the book page.</p></div></div>' +
       '<div class="admin-fields-grid">' +
       '<label class="admin-field"><span>Title <em>(optional)</em></span><input name="title" type="text" maxlength="120" placeholder="Defaults to the PDF filename"></label>' +
-      '<label class="admin-field"><span>Book ID <em>(optional)</em></span><input name="slug" type="text" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="80" placeholder="Defaults to the title" data-auto="true"><small>Lowercase letters, numbers, and single hyphens only.</small></label>' +
+      '<label class="admin-field"><span>Book ID <em>(optional)</em></span><input name="slug" type="text" pattern="[a-z0-9]+(-[a-z0-9]+)*" maxlength="80" placeholder="Defaults to the title" data-auto="true"><small>This ID is included in the downloaded JSON and used for both filenames. No JSON editing is needed.</small></label>' +
       '<label class="admin-field"><span>Subtitle <em>(optional)</em></span><input name="subtitle" type="text" maxlength="180"></label>' +
       '<label class="admin-field"><span>Author <em>(optional)</em></span><input name="author" type="text" maxlength="120" placeholder="Eden Publications"></label>' +
       '<label class="admin-field"><span>Category <em>(optional)</em></span><input name="category" type="text" maxlength="80" placeholder="Uncategorized"></label>' +
@@ -372,14 +373,14 @@
       '<label class="admin-field admin-field-wide"><span>Catalog description <em>(optional)</em></span><textarea name="description" rows="3" maxlength="500"></textarea></label>' +
       '<label class="admin-field admin-field-wide"><span>Access tokens <em>(optional; one per line)</em></span><textarea name="accessTokens" rows="3" placeholder="Leave blank for an open book"></textarea><small>Tokens are included in public JSON files and are convenience-level access only.</small></label>' +
       '</div></section>' +
-      '<section class="admin-panel"><div class="admin-section-heading"><span>03</span><div><h2 class="serif">Catalog and cover settings</h2><p>Design a text-and-color cover or upload an image to use as the cover.</p></div></div>' +
+      '<section class="admin-panel"><div class="admin-section-heading"><span>03</span><div><h2 class="serif">Catalog and cover settings</h2><p>Choose a designed cover or upload your finished cover image.</p></div></div>' +
       '<div class="admin-fields-grid">' +
       '<label class="admin-field"><span>Cover phrase <em>(optional)</em></span><input name="coverMotif" type="text" maxlength="90" placeholder="Defaults to the book title"></label>' +
       '<label class="admin-field"><span>Cover eyebrow <em>(optional)</em></span><input name="coverEyebrow" type="text" maxlength="50" placeholder="A SMALL GUIDE TO"></label>' +
       '<label class="admin-field"><span>Cover background · first color</span><input name="coverColorStart" type="color" value="#d8e0bd"></label>' +
       '<label class="admin-field"><span>Cover background · second color</span><input name="coverColorEnd" type="color" value="#79947d"></label>' +
       '<label class="admin-field"><span>Cover text color</span><input name="coverInk" type="color" value="#274b3b"></label>' +
-      '<label class="admin-field admin-field-wide admin-file-field"><span>Cover image (optional)</span><input name="coverImage" type="file" accept="image/png,image/jpeg,image/webp"><small id="cover-image-status" aria-live="polite">PNG, JPEG, or WebP up to 1 MB. The image is embedded in the downloaded book file. Uploading one uses it instead of the designed color background.</small></label>' +
+      '<label class="admin-field admin-field-wide admin-file-field"><span>Finished cover image (optional)</span><input name="coverImage" type="file" accept="image/png,image/jpeg,image/webp"><small id="cover-image-status" aria-live="polite">PNG, JPEG, or WebP up to 1 MB. It is embedded and shown as-is; title, author, colors, and cover text will not be added to or change the image.</small></label>' +
       '<label class="admin-field"><span>Access inactivity timeout (minutes) <em>(optional)</em></span><input name="inactiveMinutes" type="number" min="1" max="10080" placeholder="30"><small>Used by the browser-based token prompt; it does not secure public files.</small></label>' +
       '</div></section>' +
       '<div class="admin-submit-row"><p id="admin-message" role="status" aria-live="polite"></p><button class="button-primary" type="submit">Prepare book file ' + icon("arrowRight", 16) + '</button></div>' +
@@ -401,16 +402,15 @@
     const output = document.getElementById("admin-output");
     if (!output) return;
     output.innerHTML = '<section class="admin-panel admin-result"><div class="admin-section-heading"><span>' +
-      icon("check", 16) + '</span><div><h2 class="serif">Your book files are ready</h2><p>Download both files and add them to a new folder named for the book ID.</p></div></div>' +
+      icon("check", 16) + '</span><div><h2 class="serif">Your book files are ready</h2><p>The JSON already contains this book ID and its matching PDF filename. No editing is needed.</p></div></div>' +
       '<div class="admin-preview"><div class="admin-preview-cover">' + cover(book, "admin") + '</div><div><div class="eyebrow muted-eyebrow">' +
       escapeHtml(book.category) + ' · PDF BOOK' +
-      '</div><h3 class="serif">' + escapeHtml(book.title) + '</h3><p>' + escapeHtml(book.subtitle) +
+      '</div><h3 class="serif">' + escapeHtml(book.title) + '</h3><p>Book ID: <code>' + escapeHtml(book.slug) + '</code></p><p>' + escapeHtml(book.subtitle) +
       '</p><p class="admin-preview-description">' + escapeHtml(book.description) + '</p></div></div>' +
       '<div class="admin-downloads"><button type="button" class="button-primary" data-action="download-book">Download ' + escapeHtml(book.slug) + '.json</button>' +
       '<button type="button" class="button-secondary" data-action="download-pdf">Download ' + escapeHtml(book.slug) + '.pdf</button></div>' +
-      '<ol class="admin-publish-steps"><li>Create <code>catalog/' + escapeHtml(book.slug) + '/</code>, then put both <code>' +
-      escapeHtml(book.slug) + '.json</code> and <code>' + escapeHtml(book.slug) +
-      '.pdf</code> in that folder. Do not replace any other book folder.</li>' +
+      '<ol class="admin-publish-steps"><li>Upload both <code>' + escapeHtml(book.slug) + '.json</code> and <code>' +
+      escapeHtml(book.slug) + '.pdf</code> into the repository’s <code>catalog/</code> folder. Their shared filename pairs them.</li>' +
       '<li>Commit and push the new file. GitHub Pages will deploy the updated site.</li>' +
       '<li>After deployment, the new book will appear in the library for all visitors.</li></ol></section>';
   }
@@ -507,8 +507,7 @@
         '<p>Add the original PDF to this book’s catalog entry to read it here.</p><a href="' +
         hashLink("book/" + encodeURIComponent(book.slug)) + '" class="button-primary">Back to book details</a></main>' + footer() + '</div>';
     }
-    const pdfUrl = "./catalog/" + encodeURIComponent(book.slug) + "/" +
-      encodeURIComponent(book.pdf) + "#view=FitH&page=1";
+    const pdfUrl = "./catalog/" + encodeURIComponent(book.pdf) + "#view=FitH&page=1";
     return '<div class="pdf-reader-shell"><header class="reader-header"><a href="' +
       hashLink("book/" + encodeURIComponent(book.slug)) + '" class="reader-back">' +
       icon("arrowLeft", 16) + "<span>Book details</span></a>" +
